@@ -8,8 +8,11 @@
 ///
 /// EIP-3009 means the facilitator submits the transfer and pays the gas, so
 /// the wallet needs USDC and no CELO at all.
-//   deno run --allow-env --allow-net pay-remesso.ts
-// Needs: PAYER_KEY=0x… a wallet holding a little USDC on Celo (no CELO needed).
+///   deno run --allow-env --allow-net pay-remesso.ts
+///
+/// Needs PAYER_KEY=0x… — a wallet holding a little USDC on Celo, and no CELO.
+/// On Node, also swap `Deno.env.get(x)` for `process.env[x]` and `Deno.exit`
+/// for `process.exit`; the npm: imports alone are not enough.
 import { createWalletClient, http } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
@@ -46,7 +49,15 @@ const authorization = {
 const signature = await createWalletClient({
   account, chain: celo, transport: http("https://forno.celo.org"),
 }).signTypedData({
-  domain: { name: "USDC", version: "2", chainId: 42220, verifyingContract: r.asset },
+  // From the 402, not hardcoded: the EIP-712 domain is the seller's to state,
+  // and a wrong one makes every signature invalid for reasons a payer cannot
+  // see. The fallbacks are what USDC on Celo happens to use today.
+  domain: {
+    name: r.extra?.name ?? "USDC",
+    version: r.extra?.version ?? "2",
+    chainId: 42220,
+    verifyingContract: r.asset,
+  },
   types: {
     TransferWithAuthorization: [
       { name: "from", type: "address" }, { name: "to", type: "address" },

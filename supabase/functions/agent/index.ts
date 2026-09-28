@@ -82,6 +82,37 @@ Deno.serve((req) => {
 
     services: [
       {
+        name: "naira-rate",
+        description:
+          "Live USDT/NGN and USDC/NGN rates with spread, from on-chain RFQ makers. " +
+          "What Remesso uses to price a naira corridor honestly.",
+        endpoint: `${BASE}/functions/v1/rate-service`,
+        method: "POST",
+        input: {},
+        payment: X402.isConfigured
+          ? {
+            protocol: "x402",
+            version: 1,
+            network: "celo",
+            asset: "USDC",
+            amount: Deno.env.get("RATE_SERVICE_PRICE_UNITS") ?? "1000",
+            decimals: 6,
+            facilitator: X402.base,
+            discover: "POST without X-PAYMENT and read the 402 body",
+          }
+          : { protocol: "none", note: "not configured to take payment" },
+        refusals: [
+          "503 if the upstream rate feed is unreachable — you are not charged",
+        ],
+      },
+      {
+        name: "capabilities",
+        description: "This document. Free, because discovery that costs money is discovery nobody does.",
+        endpoint: `${BASE}/functions/v1/agent`,
+        method: "GET",
+        payment: { protocol: "none" },
+      },
+      {
         name: "trigger-run",
         description:
           "Bring one payment of an existing schedule forward. The caller buys " +
