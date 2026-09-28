@@ -226,6 +226,24 @@ export function useRunnability(onchainId: Numeric | null, executor?: string | nu
   });
 }
 
+/// The schedule as the contract holds it, including the trigger grant.
+///
+/// Read from chain rather than mirrored in the database: a grant is an
+/// authority, and the only honest source for what authority exists is the
+/// contract that enforces it.
+export function useOnchainSchedule(onchainId: Numeric | null, executor?: string | null) {
+  const address = executor && /^0x[a-fA-F0-9]{40}$/.test(executor)
+    ? (executor as `0x${string}`)
+    : EXECUTOR_ADDRESS;
+  return useReadContract({
+    address,
+    abi: executorAbi,
+    functionName: "getSchedule",
+    args: onchainId ? [BigInt(onchainId)] : undefined,
+    query: { enabled: Boolean(onchainId) && isConfigured(), refetchInterval: 30_000 },
+  });
+}
+
 /// The commission a schedule created right now would be pinned with.
 ///
 /// Read live rather than hardcoded: it is an owner setting, capped in the

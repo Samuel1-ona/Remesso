@@ -33,7 +33,14 @@ import {
   recipientIsComplete,
   type RecipientDraft,
 } from "@/components/RecipientStep";
-import { TermsStep, amountInUnits, defaultTerms, expiryProblem, type TermsDraft } from "@/components/TermsStep";
+import {
+  TermsStep,
+  amountInUnits,
+  defaultTerms,
+  expiryProblem,
+  triggerProblem,
+  type TermsDraft,
+} from "@/components/TermsStep";
 import { ActionBar, Amount, MINIPAY_DEPOSIT_URL, Row } from "@/components/ui";
 import { useIsMiniPay } from "@/lib/hooks";
 import { runsToCover } from "@/lib/allowance";
@@ -108,7 +115,7 @@ export default function NewSchedulePage() {
       : step === 1
         ? !amountIn
           ? "Enter an amount to continue"
-          : expiryProblem(terms)
+          : expiryProblem(terms) ?? triggerProblem(terms)
         : null;
   const canContinue = blocker === null;
 
@@ -259,11 +266,10 @@ export default function NewSchedulePage() {
           // V4 consent values. The swap rails pay out in cNGN; Direct converts
           // nothing and the contract zeroes this itself.
           recipient.payoutType === "direct" ? ZERO_ADDRESS : CNGN.address,
-          // No early sends. A schedule that can be triggered is a schedule
-          // somebody other than the sender can make pay, so it is opt-in and
-          // there is no UI for it yet — see README, "Being callable".
-          ZERO_ADDRESS,
-          0,
+          // The sender's grant, if they made one. Empty is the default and
+          // means only the cadence ever runs this schedule.
+          (terms.trigger.trim() || ZERO_ADDRESS) as `0x${string}`,
+          terms.trigger.trim() ? Number(terms.triggersLeft) : 0,
         ],
         ...txOverrides(),
       });
@@ -496,6 +502,18 @@ function Review({
             } ${token.symbol}.`}
           >
             {formatUnits((amountIn * BigInt(feeBps)) / 10_000n, token.decimals)} {token.symbol}
+          </Row>
+        )}
+        {terms.trigger.trim() && (
+          <Row
+            label="Collected by"
+            sub={`Can bring forward ${terms.triggersLeft} ${
+              terms.triggersLeft === "1" ? "transfer" : "transfers"
+            }. Same amount, same person, and you can withdraw it any time.`}
+          >
+            <span className="mono text-[13px]">
+              {terms.trigger.slice(0, 6)}…{terms.trigger.slice(-4)}
+            </span>
           </Row>
         )}
         <Row label="Transfers">{terms.maxRuns || "Until you stop it"}</Row>

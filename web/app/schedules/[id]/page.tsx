@@ -12,7 +12,14 @@ import { txOverrides } from "@/lib/tx";
 import { executorAbi } from "@/lib/abi";
 import { EXECUTOR_ADDRESS, EXPLORER, CNGN, tokenFor } from "@/lib/config";
 import { supabase } from "@/lib/supabase";
-import { useHistory, useIsMiniPay, useRunnability, useSchedule, useTimeUntil } from "@/lib/hooks";
+import {
+  useHistory,
+  useIsMiniPay,
+  useOnchainSchedule,
+  useRunnability,
+  useSchedule,
+  useTimeUntil,
+} from "@/lib/hooks";
 import { recipientLabel } from "@/lib/identity";
 import {
   countdown,
@@ -26,6 +33,9 @@ import { ReapproveButton } from "@/components/Reapprove";
 import { Amount, MINIPAY_DEPOSIT_URL, Row, Sheet, Skeleton } from "@/components/ui";
 import { one, type Run } from "@/lib/types";
 import { failureCopy } from "@/lib/failures";
+
+/// No trigger. `setTrigger(id, ZERO, 0)` withdraws a grant.
+const ZERO = "0x0000000000000000000000000000000000000000" as const;
 
 export default function ScheduleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +52,10 @@ export default function ScheduleDetailPage() {
   // Database rows with the chain allowed ahead of them — see `useHistory`.
   const { data: runs } = useHistory(id, schedule);
   const { data: runnability } = useRunnability(
+    schedule?.onchain_id ?? null,
+    schedule?.executor_address,
+  );
+  const { data: onchain, refetch: refetchOnchain } = useOnchainSchedule(
     schedule?.onchain_id ?? null,
     schedule?.executor_address,
   );
@@ -79,13 +93,25 @@ export default function ScheduleDetailPage() {
   const converts = recipient?.payout_type !== "direct";
   const live = schedule.status === "active" || schedule.status === "paused";
 
-  async function act(action: "pause" | "resume" | "cancel") {
+  async function act(action: "pause" | "resume" | "cancel" | "revoke") {
     if (!schedule?.onchain_id) return;
     setError(null);
-    setBusy(action === "cancel" ? "Cancelling…" : "Updating…");
+    setBusy(
+      action === "cancel" ? "Cancelling…" : action === "revoke" ? "Revoking…" : "Updating…",
+    );
     try {
       const hash =
-        action === "cancel"
+        // Withdrawing a grant is `setTrigger(id, 0, 0)`: nobody may collect,
+        // and nothing else about the schedule moves.
+        action === "revoke"
+          ? await writeContractAsync({
+              address: EXECUTOR_ADDRESS,
+              abi: executorAbi,
+              functionName: "setTrigger",
+              args: [BigInt(schedule.onchain_id), ZERO, 0],
+              ...txOverrides(),
+            })
+          : action === "cancel"
           ? await writeContractAsync({
               address: EXECUTOR_ADDRESS,
               abi: executorAbi,
@@ -102,14 +128,20 @@ export default function ScheduleDetailPage() {
             });
       await waitForTransactionReceipt(wagmiConfig, { hash });
 
-      // The contract is already the authority; this mirrors it so the executor
-      // loop stops picking the schedule up on its next tick.
-      await supabase()
-        .from("schedules")
-        .update({
-          status: action === "cancel" ? "cancelled" : action === "pause" ? "paused" : "active",
-        })
-        .eq("id", schedule.id);
+      // A grant lives only on-chain, so there is no mirror to update — just
+      // re-read it.
+      if (action === "revoke") {
+        await refetchOnchain();
+      } else {
+        // The contract is already the authority; this mirrors it so the executor
+        // loop stops picking the schedule up on its next tick.
+        await supabase()
+          .from("schedules")
+          .update({
+            status: action === "cancel" ? "cancelled" : action === "pause" ? "paused" : "active",
+          })
+          .eq("id", schedule.id);
+      }
 
       await queryClient.invalidateQueries({ queryKey: ["schedule", schedule.id] });
       await queryClient.invalidateQueries({ queryKey: ["schedules"] });
@@ -234,6 +266,34 @@ export default function ScheduleDetailPage() {
               neutral
             />
           </ul>
+        </section>
+      )}
+
+      {live && onchain?.trigger && onchain.trigger !== ZERO && (
+        <section className="mt-6">
+          <p className="eyebrow mb-3">Collecting early</p>
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <p className="text-[15px] text-ink">
+              A program can bring forward{" "}
+              <span className="font-medium">
+                {onchain.triggersLeft} {onchain.triggersLeft === 1 ? "transfer" : "transfers"}
+              </span>
+            </p>
+            <p className="mono mt-1 text-[12px] text-ink-2">
+              {onchain.trigger.slice(0, 10)}…{onchain.trigger.slice(-6)}
+            </p>
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
+              Same amount, same person, and never more often than once a minute. It
+              cannot change anything you signed.
+            </p>
+            <button
+              className="btn-soft btn-sm mt-3"
+              disabled={Boolean(busy)}
+              onClick={() => act("revoke")}
+            >
+              {busy === "Revoking…" ? "Withdrawing…" : "Withdraw this"}
+            </button>
+          </div>
         </section>
       )}
 

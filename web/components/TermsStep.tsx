@@ -19,6 +19,11 @@ export type TermsDraft = {
   maxRuns: string;         // "" = unlimited
   expiresAt: string;       // yyyy-mm-dd — required; V2 rejects a schedule with no expiry
   startNow: boolean;
+  /// Who else may pull a transfer early, and how many times. Empty and "0" —
+  /// the default — means only the cadence runs this schedule, exactly as V3
+  /// behaved. See `runNow` in RemessoExecutorV4.
+  trigger: string;
+  triggersLeft: string;
 };
 
 /// yyyy-mm-dd, `days` from now.
@@ -62,6 +67,8 @@ export const defaultTerms: TermsDraft = {
   // the security review found, so "never" is no longer offered.
   expiresAt: expiryFor({ intervalSeconds: INTERVALS.find((i) => i.label === "Monthly")!.seconds, maxRuns: "12", startNow: true }),
   startNow: true,
+  trigger: "",
+  triggersLeft: "0",
 };
 
 /// Why this expiry cannot be signed, or null.
@@ -91,6 +98,27 @@ export function expiryProblem(terms: TermsDraft): string | null {
       ? "That date is too soon for a transfer to go through"
       : "It ends before the first transfer — pick a later date, or send the first one now";
   }
+  return null;
+}
+
+/// Why this trigger grant cannot be signed, or null.
+///
+/// A grant is a pull on the sender's wallet. It is bounded — one transfer, to
+/// the destination they fixed, at most `triggersLeft` times, no more than once
+/// a minute, revocable — but it is still an authority handed to someone else,
+/// so it is validated here rather than discovered as a revert.
+export function triggerProblem(t: TermsDraft): string | null {
+  const granted = t.trigger.trim();
+  const count = Number(t.triggersLeft);
+
+  if (!granted) {
+    return count > 0 ? "Enter the agent's address, or set pulls to none" : null;
+  }
+  if (!/^0x[a-fA-F0-9]{40}$/.test(granted)) return "That agent address isn't valid";
+  if (!Number.isInteger(count) || count < 0 || count > 65535) {
+    return "Pulls must be a whole number, up to 65535";
+  }
+  if (count === 0) return "Set how many transfers the agent may pull, or clear its address";
   return null;
 }
 
@@ -311,6 +339,8 @@ export function TermsStep({
         </p>
       </div>
 
+      <AgentGrant value={value} set={set} />
+
       <label className="flex items-center justify-between gap-4 rounded-xl border border-line bg-surface px-4 py-3.5">
         <span className="text-[15px] text-ink">
           Send the first one now
@@ -389,6 +419,101 @@ function CountVsExpiry({
           Send {fits} instead
         </button>
       )}
+    </div>
+  );
+}
+
+/// Letting a program collect a transfer early.
+///
+/// This is the one place a sender hands authority to somebody else, so it is
+/// closed by default, it says what it grants in the words of the thing being
+/// granted, and it names the two limits that make it safe: the amount is the
+/// one already agreed, and the count is a number the sender picks.
+///
+/// What a holder of this grant can do: bring forward a transfer that was
+/// coming anyway. What it cannot do: change who is paid, change the amount,
+/// pay more times than granted, outlive the expiry, or pull twice inside a
+/// minute. The contract enforces every one of those — see `runNow`.
+function AgentGrant({
+  value,
+  set,
+}: {
+  value: TermsDraft;
+  set: (patch: Partial<TermsDraft>) => void;
+}) {
+  const [open, setOpen] = useState(Boolean(value.trigger));
+  const problem = triggerProblem(value);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="w-full rounded-xl border border-dashed border-line px-4 py-3 text-left"
+        onClick={() => setOpen(true)}
+      >
+        <span className="text-[15px] text-ink">Let a program collect early</span>
+        <span className="mt-0.5 block text-[13px] text-ink-2">
+          Optional. For paying a service that bills when it does the work.
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[15px] text-ink">Let a program collect early</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">
+            It can bring a transfer forward — the same amount, to the same person. It
+            can never change either, go past your end date, or collect more times than
+            you allow here. You can withdraw this at any time.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="shrink-0 text-[13px] text-ink-3 underline underline-offset-2"
+          onClick={() => {
+            setOpen(false);
+            set({ trigger: "", triggersLeft: "0" });
+          }}
+        >
+          Remove
+        </button>
+      </div>
+
+      <label className="label mt-4" htmlFor="trigger-address">
+        Its address
+      </label>
+      <input
+        id="trigger-address"
+        className={`field mono ${value.trigger && problem ? "field-invalid" : ""}`}
+        placeholder="0x…"
+        autoComplete="off"
+        spellCheck={false}
+        value={value.trigger}
+        onChange={(e) => set({ trigger: e.target.value.trim() })}
+      />
+
+      <p className="label mt-4">How many may it collect?</p>
+      <div className="flex flex-wrap gap-2">
+        {["1", "3", "6", "12"].map((n) => (
+          <button
+            key={n}
+            type="button"
+            className={`chip ${value.triggersLeft === n ? "border-clay bg-clay-soft text-clay-deep" : ""}`}
+            onClick={() => set({ triggersLeft: n })}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+
+      {problem && <p className="mt-3 text-[13px] text-danger">{problem}</p>}
+      <p className="hint">
+        Each collection uses up one of your transfers — it moves one forward, it does
+        not add one.
+      </p>
     </div>
   );
 }
