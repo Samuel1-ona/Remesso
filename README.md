@@ -14,6 +14,10 @@ through the cNGN API to a Nigerian bank account) are built and tested but
 [Open items](#open-items). Everything about them below still holds; nothing
 about them is reachable by a sender right now.
 
+It is also a rail two **programs** can use: an agent can be paid by a mandate a
+human signed, collect its own payment when it has earned it, and pay other
+agents for services — see [Agent to agent](#agent-to-agent).
+
 Three things distinguish it from a scheduled transfer script:
 
 - **The contract is the authority.** A backend key triggers runs and can do
@@ -170,6 +174,58 @@ Proven on mainnet 2026-09-22: one request moved 0.01 USDC to the treasury and
 > The facilitator advertises x402 **v1 under network `celo`** and **v2 under
 > `eip155:42220`**. Pairing a version with the other name is rejected as
 > `unsupported_scheme`, which reads like a scheme problem and is a naming one.
+
+## Agent to agent
+
+Remesso is a remittance rail two programs can use without a person in the
+loop at the moment money moves — and without either program being trusted.
+
+**A payer signs a mandate.** Who is paid, how much, how often, until when, and
+how many payments a named counterparty may collect early. That signature is one
+on-chain transaction and it is the whole of the authority anyone gets.
+
+**The payee collects.** It calls `runNow` with its own key and its own gas, and
+takes exactly one payment — the amount the payer fixed, to the address the payer
+fixed, at most the number of times granted, never twice inside a minute, never
+past the expiry. The payer can withdraw the grant at any moment, and revoking
+the token allowance stops everything without our cooperation.
+
+Proven on Celo mainnet, 2026-09-28. Agent A created a schedule paying agent B
+0.02 USDT with the first payment an hour away, granting one early collection.
+Agent B then collected while the schedule was **not due** — `runnability` said
+`due: false`, `triggerability` said yes — and received 0.01995 USDT, the
+commission taken at the rate pinned when A signed. Its second attempt was
+refused: the grant was spent.
+
+For an agent with no CELO for gas, `trigger-run` does the same thing for a cent
+in USDC, and the facilitator pays the gas.
+
+### Paying for services, not just being paid
+
+The same wallet can buy. `_shared/x402-pay.ts` reads a 402, checks the price
+against a per-call ceiling and a rolling daily cap, signs a USDC authorisation
+and retries — every payment written to the `agent_spend` ledger before it is
+signed. `rate-service` is the other end of that: live NGN rates for a tenth of
+a cent, so the loop can be exercised in both directions.
+
+Exercised the same day: Remesso's agent paid 0.001 USDC for a rate quote
+(settled `0x53d4fdb3…`), and one of its schedules paid out on demand
+(`0x630e4681…`). No API key, no account, no prior relationship on either side.
+
+### What an agent needs
+
+| To be paid | To pay |
+|---|---|
+| An address. That is all — the payer names it. | USDC on Celo. No CELO: EIP-3009 means the facilitator pays gas. |
+| To collect early: a grant, plus gas — or a cent for `trigger-run`. | An x402 client. `scripts/agent-pay.ts` is ~40 lines. |
+| Nothing to install, no key shared with us. | `GET /functions/v1/agent` to discover; the 402 is the quote. |
+
+### What this is not
+
+Per-minute granularity, not per-call streaming: `MIN_TRIGGER_GAP` is 60
+seconds. Gas (~$0.0005 a collection) puts a floor under useful payment sizes,
+so a cent is sensible and a thousandth of one is not. Sub-cent streaming would
+be payment channels, which none of this is.
 
 ## Identity
 
