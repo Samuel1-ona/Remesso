@@ -50,8 +50,9 @@ Deno.serve(async (req) => {
     return json({
       name: "naira-rate",
       description:
-        "Live USDT/NGN and USDC/NGN rates with spread and available depth, " +
-        "aggregated from on-chain RFQ makers.",
+        "Live USDT/NGN and USDC/NGN rates from on-chain RFQ makers: bid, ask " +
+        "and last, with mid and spread when both sides are quoted and null " +
+        "for both when the market is one-sided.",
       price: { asset: "USDC", amount: PRICE_UNITS, decimals: 6, protocol: "x402", network: "celo" },
       call: "POST with an X-PAYMENT header; POST without one to see the 402.",
     });
@@ -98,7 +99,8 @@ type Rate = {
   pair: string;
   bid: string;
   ask: string;
-  mid: number;
+  last: string;
+  mid: number | null;
   spreadBps: number | null;
 };
 
@@ -112,15 +114,21 @@ async function naira(): Promise<Rate[]> {
     .map((r) => {
       const bid = Number(r.bid);
       const ask = Number(r.ask);
-      // A zero bid means nobody is quoting that side right now. Reporting it
-      // as a spread of "everything" would be arithmetic pretending to be
-      // information.
+      // A zero bid means nobody is quoting that side right now. There is no
+      // midpoint between a price and nothing: falling back to `last_price`
+      // published a one-sided ask under a name that promises both sides — the
+      // kind of lie a buyer is least likely to check. `last` is still here,
+      // called what it is, and a null mid says plainly that the market is
+      // one-sided. Same reason `spreadBps` is null rather than "everything".
       const both = bid > 0 && ask > 0;
       return {
         pair: r.ticker_id,
         bid: r.bid,
         ask: r.ask,
-        mid: both ? (bid + ask) / 2 : Number(r.last_price),
+        last: r.last_price,
+        // Naira quotes are ~4 significant figures; binary floats are not, and
+        // 1374.3049999999998 reads as precision nobody has.
+        mid: both ? Math.round((bid + ask) / 2 * 100) / 100 : null,
         spreadBps: both ? Math.round(((ask - bid) / ((ask + bid) / 2)) * 10_000) : null,
       };
     });

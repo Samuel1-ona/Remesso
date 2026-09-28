@@ -58,7 +58,7 @@ to be read or pasted rather than installed.
 | Service | Price | What you get |
 |---|---|---|
 | `/functions/v1/agent` | free | Capabilities, prices, and what we refuse |
-| `/functions/v1/rate-service` | 0.001 USDC | Live USDT/NGN and USDC/NGN with spread, from on-chain RFQ makers |
+| `/functions/v1/rate-service` | 0.001 USDC | Live USDT/NGN and USDC/NGN from on-chain RFQ makers — bid, ask and last, with mid and spread when both sides are quoted |
 | `/functions/v1/trigger-run` | 0.01 USDC | Bring one payment of an existing schedule forward |
 
 `trigger-run` answers `403` before quoting a price if the schedule's payer has

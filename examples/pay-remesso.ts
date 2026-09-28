@@ -10,20 +10,34 @@
 /// the wallet needs USDC and no CELO at all.
 ///   deno run --allow-env --allow-net pay-remesso.ts
 ///
-/// Needs PAYER_KEY=0x… — a wallet holding a little USDC on Celo, and no CELO.
+/// Needs PAYER_KEY (or PRIVATE_KEY) — a wallet holding a little USDC on Celo,
+/// and no CELO.
 ///
 /// On Node: `npm i viem`, change the imports to "viem", "viem/accounts" and
 /// "viem/chains" (Node cannot resolve `npm:` or a version suffix), swap
 /// `Deno.env.get(x)` for `process.env[x]` and `Deno.exit` for `process.exit`,
-/// and save it as `.mts` — without that, tsx compiles this as CommonJS and the
-/// top-level await below fails. Node 23.6+ runs the .ts file as it stands.
+/// and save it as `.mts` — as `.ts` it is compiled to CommonJS and the
+/// top-level await below fails. Then `node --experimental-strip-types
+/// pay-remesso.mts` on Node 22.6 through 23.5, or plain `node pay-remesso.mts`
+/// on 23.6+. No tsx, no build step.
 import { createWalletClient, http } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
 
 const URL_ = Deno.env.get("SERVICE") ??
   "https://engaboljiqudghvzmebq.supabase.co/functions/v1/rate-service";
-const account = privateKeyToAccount(Deno.env.get("PAYER_KEY") as `0x${string}`);
+
+// Both names, with or without the 0x. Wallets export private keys every one of
+// these ways, and a key that is right but shaped differently should not read as
+// a key that is wrong.
+const key = (Deno.env.get("PAYER_KEY") ?? Deno.env.get("PRIVATE_KEY") ?? "").trim();
+if (!/^(0x)?[0-9a-fA-F]{64}$/.test(key)) {
+  console.error("set PAYER_KEY (or PRIVATE_KEY) to a 32-byte hex private key");
+  Deno.exit(2);
+}
+const account = privateKeyToAccount(
+  (key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`,
+);
 console.log("paying as:", account.address);
 
 // 1. Ask without paying. The 402 body is the quote.
