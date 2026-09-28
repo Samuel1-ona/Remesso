@@ -289,6 +289,35 @@ That is the sybil-resistance layer the Celo Agent Visa Work tier asks for.
 The agent address is an identity, not a key that moves money. Runs are still
 signed by the executor (`0x3c754AD3…49Cd1`) and bounded by the contract.
 
+## Agents: being paid, and paying
+
+Three pieces, all live.
+
+**A payer can grant a program the right to collect.** `createSchedule` takes a
+`trigger` address and a count; the holder calls `runNow` and brings ONE payment
+forward — same recipient, same amount, at most once a minute, never past the
+expiry, revocable with `setTrigger(id, 0, 0)`. Closed by default in the UI, and
+the grant is read from chain, never mirrored: an authority's only honest source
+is the contract that enforces it.
+
+**`/functions/v1/agent`** is the capability document — identity (Self Agent ID
+191), chain, the executor's trigger address, the paid service and its price,
+and what it refuses. Public and unauthenticated on purpose: an agent nobody can
+read about is an agent nobody can call.
+
+**`_shared/x402-pay.ts`** is the other direction — Remesso paying somebody
+else's x402 service. Two ceilings (per call, and rolling 24h from the
+`agent_spend` ledger), and the row is written BEFORE the signature: a row with
+no payment is a question, a payment with no row is money nobody can account
+for. `AGENT_SPEND_PRIVATE_KEY` is deliberately NOT the executor key — one key
+that both moves senders' money and spends ours is one compromise with two blast
+radii. `scripts/agent-pay.ts` drives it by hand.
+
+Limits worth knowing before promising anything: `MIN_TRIGGER_GAP` is 60s, so
+this is per-minute granularity rather than per-call streaming, and gas (~$0.0005
+a run) sets a floor under useful payment sizes. Sub-cent per-call streaming
+would be payment channels, which none of this is.
+
 ## Invariants — do not break
 
 - **`delivered` is not `paid_out`.** For a bank payout, the swap settling means
