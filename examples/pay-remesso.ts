@@ -11,8 +11,12 @@
 ///   deno run --allow-env --allow-net pay-remesso.ts
 ///
 /// Needs PAYER_KEY=0x… — a wallet holding a little USDC on Celo, and no CELO.
-/// On Node, also swap `Deno.env.get(x)` for `process.env[x]` and `Deno.exit`
-/// for `process.exit`; the npm: imports alone are not enough.
+///
+/// On Node: `npm i viem`, change the imports to "viem", "viem/accounts" and
+/// "viem/chains" (Node cannot resolve `npm:` or a version suffix), swap
+/// `Deno.env.get(x)` for `process.env[x]` and `Deno.exit` for `process.exit`,
+/// and save it as `.mts` — without that, tsx compiles this as CommonJS and the
+/// top-level await below fails. Node 23.6+ runs the .ts file as it stands.
 import { createWalletClient, http } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
