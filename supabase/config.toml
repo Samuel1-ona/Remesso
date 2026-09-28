@@ -63,3 +63,9 @@ verify_jwt = false
 # schedule.
 [functions.agent]
 verify_jwt = false
+
+# A paid capability sold to other agents. Same reasoning as trigger-run: the
+# caller is an agent with a signed USDC authorisation, not a Supabase user, and
+# the payment is the authentication.
+[functions.rate-service]
+verify_jwt = false
