@@ -14,6 +14,7 @@ import { CELO, SELF_API } from "../_shared/config.ts";
 import { ATTRIBUTION_CODE } from "../_shared/attribution.ts";
 import { X402 } from "../_shared/x402.ts";
 import { executorAccount, executorV4 } from "../_shared/celo.ts";
+import { CNGN_RAILS_ENABLED } from "../_shared/rails.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -116,7 +117,8 @@ Deno.serve((req) => {
         name: "trigger-run",
         description:
           "Bring one payment of an existing schedule forward. The caller buys " +
-          "timing and nothing else.",
+          "timing and nothing else. Stablecoin payouts only: naira schedules " +
+          "are refused before a price is quoted.",
         endpoint: `${BASE}/functions/v1/trigger-run`,
         method: "POST",
         input: { schedule: "on-chain schedule id, as a decimal string" },
@@ -138,6 +140,9 @@ Deno.serve((req) => {
           "403 if the schedule's payer did not grant this executor the right to collect",
           "403 once the granted collections are used up",
           "403 within 60 seconds of the previous collection",
+          ...(CNGN_RAILS_ENABLED ? [] : [
+            "403 for any schedule paying out in cNGN — naira payouts are switched off",
+          ]),
           "409 if the payment itself reverts — the caller is not charged",
         ],
       },

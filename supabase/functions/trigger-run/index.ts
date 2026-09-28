@@ -11,13 +11,22 @@
 ///     its trigger, and did not authorise early sends
 ///   - it cannot exceed the run cap, the expiry, the floor, or the sender's
 ///     ERC20 allowance
+///   - it cannot bring forward a naira payout while the cNGN rails are off
 ///
 /// The caller is buying timing. Everything else was fixed when the sender
 /// signed, and `runNow` re-checks all of it on-chain.
 ///
 /// Order of operations: verify the payment, run, then settle. A caller whose
 /// run reverts is not charged; a caller who is charged got their run.
-import { executorAccount, executorV4, runNow, triggerability, v4Runnability } from "../_shared/celo.ts";
+import {
+  executorAccount,
+  executorV4,
+  getSchedule,
+  runNow,
+  triggerability,
+  v4Runnability,
+} from "../_shared/celo.ts";
+import { CNGN_RAILS_ENABLED, PAYOUT_DIRECT, RAIL_DISABLED_DETAIL } from "../_shared/rails.ts";
 import {
   decodePayment,
   encodeSettlement,
@@ -68,13 +77,24 @@ Deno.serve(async (req) => {
   // the caller should not pay to discover that.
   let canTrigger: boolean;
   let floor: bigint;
+  let payoutType: number;
   try {
     const t = await triggerability(id);
     canTrigger = t.canTrigger;
     floor = (await v4Runnability(id)).floor;
+    payoutType = (await getSchedule(id)).payoutType;
   } catch (e) {
     console.error("trigger-run: chain read failed", (e as Error).message);
     return json({ error: "could not read the schedule" }, 502);
+  }
+
+  // A cNGN schedule is refused here, not priced. The contract would happily
+  // run it — the rails are compiled in and immutable — so this endpoint is one
+  // of only two places that can decline, and the rail is read from the chain
+  // rather than from our mirror of it because a payer is about to spend money
+  // on the answer.
+  if (!CNGN_RAILS_ENABLED && payoutType !== PAYOUT_DIRECT) {
+    return json({ error: "this schedule cannot be triggered", detail: RAIL_DISABLED_DETAIL }, 403);
   }
 
   if (!canTrigger) {

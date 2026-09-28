@@ -30,6 +30,7 @@ import {
   runnability,
 } from "../_shared/celo.ts";
 import { assertCeloSupported, CngnError, redeemToBank } from "../_shared/cngn.ts";
+import { CNGN_RAILS_ENABLED } from "../_shared/rails.ts";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -92,8 +93,26 @@ Deno.serve(async () => {
   });
   if (error) return json({ error: error.message }, 500);
 
-  const schedules = (due ?? []) as DueSchedule[];
+  let schedules = (due ?? []) as DueSchedule[];
   if (!schedules.length) return json({ processed: 0, results: [] });
+
+  // Naira payouts are refused here rather than in the contract, which has all
+  // three rails compiled in and cannot be changed. Refused BEFORE a `runs` row
+  // exists: a run we will never attempt is not a failed run, and writing one
+  // every tick would bury a sender's real history under a policy decision.
+  // The schedule simply stays due, which is the truth — it is owed a payment
+  // and we are declining to send it.
+  const refused: unknown[] = [];
+  if (!CNGN_RAILS_ENABLED) {
+    const runnable = schedules.filter((s: DueSchedule) => s.payout_type === "direct");
+    for (const s of schedules) {
+      if (s.payout_type === "direct") continue;
+      console.warn(`execute-due-runs: skipping ${s.payout_type} schedule ${s.onchain_id} — cNGN rails off`);
+      refused.push({ schedule: s.onchain_id, skipped: "cngn_rails_disabled" });
+    }
+    schedules = runnable;
+  }
+  if (!schedules.length) return json({ processed: 0, results: refused });
 
   // The deployed contract's runnability() does not report paused state, so ask
   // directly. Without this, a pause turns every tick into a fresh cNGN
@@ -114,7 +133,7 @@ Deno.serve(async () => {
     }
   }
 
-  const results: unknown[] = [];
+  const results: unknown[] = [...refused];
 
   // --- phase 1: parallel, read-only -----------------------------------------
   const prepared: Prepared[] = [];

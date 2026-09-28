@@ -62,8 +62,9 @@ to be read or pasted rather than installed.
 | `/functions/v1/trigger-run` | 0.01 USDC | Bring one payment of an existing schedule forward |
 
 `trigger-run` answers `403` before quoting a price if the schedule's payer has
-not granted our executor the right to collect. Nobody should pay to find that
-out.
+not granted our executor the right to collect, or if the schedule pays out in
+naira — those rails are switched off pending the regulatory work below. Nobody
+should pay to find either out.
 
 ---
 

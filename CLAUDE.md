@@ -131,13 +131,28 @@ in cNGN sees nothing and cannot add a custom token.
 The swap rails (`Wallet`, `BankRedemption`) still convert to cNGN and remain the
 path for bank payouts, where no wallet is involved.
 
-**Both are hidden in the UI as of 2026-09-20** — `NEXT_PUBLIC_ENABLE_CNGN_RAILS`
-is not `"1"`, so a sender can only authorise a stablecoin payout. Naira is what
-carries the open regulatory question and the unverified cNGN account; without it
-the product needs no payout partner and no money-transmission answer. Nothing is
-deleted: the contract has all three rails, `execute-due-runs` still runs them,
-and existing schedules of any kind still render. Set the flag to `"1"` (plus
-`NEXT_PUBLIC_CNGN_REDEMPTION_ADDRESS` for bank payouts) to bring them back.
+**Both are off as of 2026-09-20, and off in the backend too as of 2026-09-28.**
+Naira is what carries the open regulatory question and the unverified cNGN
+account; without it the product needs no payout partner and no
+money-transmission answer.
+
+Two flags, because hiding a form is not refusing a payment:
+
+| | |
+|---|---|
+| `NEXT_PUBLIC_ENABLE_CNGN_RAILS` | frontend. A sender can only authorise a stablecoin payout. |
+| `ENABLE_CNGN_RAILS` | backend (`_shared/rails.ts`). `execute-due-runs` skips a due cNGN schedule before it writes a `runs` row, and `trigger-run` answers 403 before quoting a price. |
+
+Both default to off, so a deploy that forgets one fails toward the rail that
+needs no payout partner. **The contract is not involved and cannot be** — it is
+immutable, has all three rails compiled in, and `pause()` is its only lever,
+which stops every rail at once. The two callers are the only things that can
+decline. Set both flags to `"1"` (plus `NEXT_PUBLIC_CNGN_REDEMPTION_ADDRESS`
+for bank payouts) to bring naira back.
+
+Nothing is deleted: existing schedules of any kind still render, and a skipped
+schedule simply stays due rather than accruing failed runs. As of 2026-09-28
+all six V4 schedules are `Direct`/USDT, so nothing is currently refused.
 
 **Decimals are not uniform.** USDT and USDC are 6dp, cUSD is 18dp, cNGN is 6dp —
 all verified on-chain. `lib/config.ts` holds the map; never hardcode 6.
@@ -265,7 +280,10 @@ verify -> run -> settle, so a reverted run charges nobody; a settlement that
 fails after a successful run is logged loudly because it is our loss.
 `verify_jwt = false`: the payment is the authentication, and callers have no
 Supabase JWT. It answers 403 before quoting a price for any schedule whose
-sender did not nominate this executor — nobody should pay to learn that.
+sender did not nominate this executor, and for any schedule paying out in cNGN
+while `ENABLE_CNGN_RAILS` is off — nobody should pay to learn either. The rail
+is read from `getSchedule()` on-chain, not from the mirror: a payer is about to
+spend money on that answer.
 
 **Reads lag.** The 403/402 decision reads the chain; just after a state change
 forno can still answer from a block behind. Seen on 2026-09-22 right after a
