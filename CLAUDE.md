@@ -281,6 +281,13 @@ Registered with Self Agent ID on 2026-09-22, from a real passport:
 | agent address | `0x5C3EBb0084233156ba51a5C2dfD42d88d5a74CA6` |
 | human owner | `0xcDEA4Cc4191Ec9A5d8fD1a6B17e3F4C84E993Ae2` (cold) |
 | registry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` — soulbound, `ownerOf(191)` confirms |
+| ERC-8004 | agent `9867`, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, registered 2026-09-28 |
+
+The ERC-8004 metadata is a `data:` URI embedded in the token, not a link to a
+host we control: what is registered cannot be quietly rewritten later. Changing
+it means `setAgentURI` and a transaction anyone can see. Keep the services in
+it in step with what is actually deployed — a registry entry advertising an
+endpoint that 404s is worse than no entry.
 
 It proves a unique human stands behind the agent and discloses nothing about
 them: the returned credentials are empty bytes, and the OFAC flags are false.

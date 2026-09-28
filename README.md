@@ -53,6 +53,7 @@ Everything below was verified on-chain and against live docs, most recently
 | RemessoExecutorV3 | `0xd2e68acd875fb1b3a98dc0d72659910b05e7e08f` — superseded 2026-09-22; its schedules remain on-chain and cannot run again |
 | RemessoExecutorV2 | `0x218414aD37206fd4cFD6C47947574708DB0e95D2` — superseded |
 | RemessoExecutor V1 | `0xC7eF75fC6283aB3b810fa4dE270F074C47761189` — retired, has known defects |
+| ERC-8004 agent | `9867`, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` — metadata is a `data:` URI in the token, so it cannot be changed after the fact |
 | Self Agent ID | token `191`, agent `0x5C3EBb0084233156ba51a5C2dfD42d88d5a74CA6`, registry `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
 | cNGN (Celo mainnet) | `0xF6829D7393dAe24509eb1E52eE8e572e2E271a4f` — **6 decimals** |
 | USDT / USDC / cUSD | `0x48065fbbe…483d5e` 6dp · `0xcebA9300f…C6f33A8B32118C` 6dp · `0x765DE8168…8B1282a` **18dp** |
@@ -211,6 +212,9 @@ a cent, so the loop can be exercised in both directions.
 Exercised the same day: Remesso's agent paid 0.001 USDC for a rate quote
 (settled `0x53d4fdb3…`), and one of its schedules paid out on demand
 (`0x630e4681…`). No API key, no account, no prior relationship on either side.
+
+Connecting one takes nothing but HTTP: [docs/AGENTS.md](docs/AGENTS.md) is the
+page to hand someone pointing an agent at this.
 
 ### What an agent needs
 

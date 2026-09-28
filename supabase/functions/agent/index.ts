@@ -50,6 +50,15 @@ Deno.serve((req) => {
     // trusting this document. The agent id is soulbound to a human who proved
     // themselves with a passport.
     identity: {
+      /// ERC-8004, so an agent can find this one through the registry rather
+      /// than because somebody handed over a URL. The metadata there is a
+      /// `data:` URI inside the token: what was registered cannot be changed
+      /// afterwards by whoever still controls a server.
+      erc8004: {
+        agentId: 9867,
+        registry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+        chainId: 42220,
+      },
       selfAgentId: Deno.env.get("SELF_AGENT_ID") ?? "191",
       agentAddress: Deno.env.get("SELF_AGENT_ADDRESS") ??
         "0x5C3EBb0084233156ba51a5C2dfD42d88d5a74CA6",
