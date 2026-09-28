@@ -330,6 +330,23 @@ is the contract that enforces it.
 and what it refuses. Public and unauthenticated on purpose: an agent nobody can
 read about is an agent nobody can call.
 
+**Four ways to hand over a receiving address**, because an agent that wants to
+be PAID previously had no move at all — its operator read hex down a phone.
+`POST /functions/v1/request-payment` (free, unauthenticated) writes a
+`payment_requests` row that surfaces on the payer's home screen and returns a
+prefill link; `/schedules/new?to=…&amount=…&every=…` fills the form directly
+(`web/lib/payLink.ts` validates every parameter and drops the rest); the
+address can simply be told; and the schedule screen shows the recipient with a
+copy button — never when it is the sender's own wallet, which MiniPay's rules
+forbid showing.
+
+**None of it can create a schedule.** A request prefills a form: there is no
+column in `payment_requests` that moves money and no code path from a row to
+`createSchedule`. The form announces that a link filled it in, because a
+silently prefilled recipient is how a link becomes a trick. Rows are advisory,
+capped at 10 pending per payer, and readable by anyone who names the address —
+they are inbound requests to be paid, which is what an invoice is.
+
 **`_shared/x402-pay.ts`** is the other direction — Remesso paying somebody
 else's x402 service. Two ceilings (per call, and rolling 24h from the
 `agent_spend` ledger), and the row is written BEFORE the signature: a row with

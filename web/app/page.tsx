@@ -8,6 +8,7 @@ import { recipientLabel } from "@/lib/identity";
 import { formatUnits, intervalLabel, relativeTime } from "@/lib/format";
 import { SchedulePill } from "@/components/StatusPill";
 import { IdentityCard } from "@/components/IdentityCard";
+import { PaymentRequests } from "@/components/PaymentRequests";
 import { ReapproveButton, useApprovalCover } from "@/components/Reapprove";
 import { ActionBar, Amount, MINIPAY_DEPOSIT_URL, Skeleton } from "@/components/ui";
 import { isConfigured, tokenFor, USDT, type TokenInfo } from "@/lib/config";
@@ -93,6 +94,11 @@ export default function SchedulesPage() {
       <ApprovalStrip token={token} />
 
       <IdentityCard />
+
+      {/* Above the schedules: an unanswered request is the only thing on this
+          screen waiting on the sender. Below the balance, because "can I
+          afford this" is the first thing they will ask of it. */}
+      <PaymentRequests />
 
       <section className="mt-8">
         <div className="mb-3 flex items-baseline justify-between">

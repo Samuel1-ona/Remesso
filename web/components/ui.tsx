@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /// Small shared pieces. Each is here because two screens needed it, not
 /// because a design system was planned.
@@ -121,3 +121,61 @@ export function Row({
 /// here, not to a dead-end error — the sender's next action is always "add
 /// money", so the button is that action.
 export const MINIPAY_DEPOSIT_URL = "https://minipay.opera.com/add_cash";
+
+/// A value the viewer is meant to take away with them — an address, a link.
+///
+/// Copy rather than select: on a phone, selecting 42 hex characters without
+/// catching a neighbouring character is a fiddle, and a half-copied address is
+/// a payment to nobody.
+///
+/// MiniPay's listing rules forbid showing the USER'S OWN wallet address, in
+/// any form including truncated. This is for a counterparty's — a recipient
+/// the sender typed in themselves. Callers must not point it at the connected
+/// wallet; `app/schedules/[id]` checks before rendering one.
+export function CopyValue({
+  value,
+  display,
+  label = "Copy",
+}: {
+  value: string;
+  display?: string;
+  label?: string;
+}) {
+  const [done, setDone] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      // Insecure origins and older webviews have no clipboard API. Falling
+      // back to a selection beats a button that silently does nothing.
+      const sel = window.getSelection();
+      const node = document.getElementById(`copy-${value}`);
+      if (sel && node) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      return;
+    }
+    setDone(true);
+    setTimeout(() => setDone(false), 1600);
+  }
+
+  return (
+    <span className="inline-flex max-w-full items-center gap-2">
+      <span id={`copy-${value}`} className="mono truncate text-[13px]">
+        {display ?? value}
+      </span>
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 rounded-lg bg-sand px-2 py-1 text-[12px] font-medium text-ink-2 active:scale-95"
+        aria-label={`${label} ${display ?? value}`}
+      >
+        {done ? "Copied" : label}
+      </button>
+    </span>
+  );
+}

@@ -10,7 +10,7 @@
 /// Public and unauthenticated (`verify_jwt = false`): a capability document
 /// nobody can fetch without credentials is not discovery. It contains no
 /// secret, quotes no sender, and names no schedule.
-import { CELO, SELF_API } from "../_shared/config.ts";
+import { CELO, DIRECT_TOKENS, SELF_API } from "../_shared/config.ts";
 import { ATTRIBUTION_CODE } from "../_shared/attribution.ts";
 import { X402 } from "../_shared/x402.ts";
 import { executorAccount, executorV4 } from "../_shared/celo.ts";
@@ -23,6 +23,10 @@ const CORS = {
 };
 
 const BASE = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
+
+/// The app a payer actually opens. Separate from BASE: the functions host
+/// serves the API, the web origin serves the form a link has to land in.
+const WEB = (Deno.env.get("WEB_ORIGIN") ?? "https://remesso-3q67.vercel.app").replace(/\/+$/, "");
 
 /// The address a payer grants. Undefined rather than a throw if the key is
 /// missing: a capability document that 500s teaches a caller nothing.
@@ -81,6 +85,43 @@ Deno.serve((req) => {
       attributionCode: ATTRIBUTION_CODE,
     },
 
+    /// How to be paid, stated plainly because it is the half agents keep
+    /// getting wrong. Receiving takes an address and nothing else — no gas,
+    /// no balance, no account, no software, not even a call to us. The payer
+    /// and the executor carry every cost, which is what makes an address a
+    /// complete answer.
+    receiving: {
+      needs: ["an address on Celo"],
+      doesNotNeed: ["gas", "a token balance", "an account with us", "our software"],
+      assets: DIRECT_TOKENS.map((t) => t.symbol),
+      /// Four ways to get an address to a payer, easiest first. They differ
+      /// only in who does the typing.
+      howToHandOverYourAddress: [
+        {
+          how: "ask directly",
+          what: `POST ${BASE}/functions/v1/request-payment`,
+          detail: "free; returns a link and puts the request in the payer's app",
+        },
+        {
+          how: "send a link",
+          what: `${WEB}/schedules/new?to=0xYourAddress&amount=5&every=week`,
+          detail: "opens their form already filled in; they review and sign",
+        },
+        {
+          how: "tell them the address",
+          what: "any channel you already use",
+          detail: "they type it into the recipient field themselves",
+        },
+      ],
+      /// The part no endpoint can do for you.
+      thePayerDecides:
+        "every route above ends with the payer signing createSchedule in their " +
+        "own wallet. Nothing here obliges anyone to pay you.",
+      verify:
+        "read getSchedule(id) on the executor — the recipient, amount and cadence " +
+        "are fixed there, and nobody can change them, including us",
+    },
+
     services: [
       {
         name: "naira-rate",
@@ -112,6 +153,31 @@ Deno.serve((req) => {
         endpoint: `${BASE}/functions/v1/agent`,
         method: "GET",
         payment: { protocol: "none" },
+      },
+      {
+        name: "request-payment",
+        description:
+          "Ask a Remesso sender to pay you on a schedule. Free. Advisory only: " +
+          "it prefills their form and returns a link — it cannot create a " +
+          "schedule, approve an allowance or move a token. Only the payer can, " +
+          "and only by signing in their own wallet.",
+        endpoint: `${BASE}/functions/v1/request-payment`,
+        method: "POST",
+        input: {
+          payer: "the wallet address you are asking",
+          to: "the address you want paid",
+          amount: "optional, e.g. \"5\"",
+          token: "optional: USDT, USDC or cUSD",
+          every: "optional: week | fortnight | month | quarter",
+          runs: "optional: how many payments",
+          from: "optional: who is asking",
+          note: "optional: why",
+        },
+        payment: { protocol: "none" },
+        refusals: [
+          "400 if either address is not a wallet address",
+          "429 once a payer has 10 requests waiting — an inbox anyone can fill is an inbox nobody reads",
+        ],
       },
       {
         name: "trigger-run",

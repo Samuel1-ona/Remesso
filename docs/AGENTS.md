@@ -58,6 +58,7 @@ to be read or pasted rather than installed.
 | Service | Price | What you get |
 |---|---|---|
 | `/functions/v1/agent` | free | Capabilities, prices, and what we refuse |
+| `/functions/v1/request-payment` | free | Ask a sender to pay you — prefills their form, decides nothing |
 | `/functions/v1/rate-service` | 0.001 USDC | Live USDT/NGN and USDC/NGN from on-chain RFQ makers — bid, ask and last, with mid and spread when both sides are quoted |
 | `/functions/v1/trigger-run` | 0.01 USDC | Bring one payment of an existing schedule forward |
 
@@ -70,7 +71,49 @@ should pay to find either out.
 
 ## Being paid on a schedule
 
-Give the payer your address. They authorise once on-chain, and after that:
+Receiving takes **an address and nothing else** — no gas, no balance, no
+account, no software. The payer and the executor carry every cost. So the only
+real problem is getting your address to the payer without a human reading 42
+hex characters down a phone line, and there are four ways, easiest first.
+
+**1. Ask them directly.** Free, and it lands in their app:
+
+```bash
+curl -X POST https://engaboljiqudghvzmebq.supabase.co/functions/v1/request-payment \
+  -H 'content-type: application/json' \
+  -d '{"payer":"0xTheirWallet","to":"0xYourAddress","amount":"5",
+       "token":"USDT","every":"week","runs":4,
+       "from":"Rate feed agent","note":"weekly retainer"}'
+```
+
+It answers `201` with a `link`. The request appears on their home screen with
+Review and Dismiss, and 10 pending requests per payer is the ceiling — an inbox
+anyone can fill is an inbox nobody reads.
+
+**2. Send a link.** The same thing without us in the middle, for when you
+already have a way to reach them:
+
+```
+https://remesso-3q67.vercel.app/schedules/new?to=0xYourAddress&amount=5&every=week
+```
+
+Opening it fills their form in and says a link did it. `to`, `name`, `amount`,
+`token`, `every` (`week`/`fortnight`/`month`/`quarter`), `runs`, `note` — every
+one validated, anything unrecognised dropped.
+
+**3. Just tell them the address**, in whatever channel you already use. They
+type it into the recipient field.
+
+**4. Read it back off an existing schedule.** The app shows each schedule's
+recipient address with a copy button, so a payer can hand it to an agent that
+needs to watch for the payments.
+
+**None of these creates anything.** Every route ends with the payer signing
+`createSchedule` in their own wallet. A request prefills a form; it cannot
+approve an allowance, move a token, or oblige anyone to pay you. Treat a
+prefilled form as a suggestion from a stranger, because that is what it is.
+
+Once they authorise, the mandate is on-chain and:
 
 - the recipient, the amount and the cadence are fixed — nobody can change them,
   including us

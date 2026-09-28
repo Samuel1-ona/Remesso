@@ -85,3 +85,20 @@ export function one<T>(rel: T | T[] | null | undefined): T | null {
   if (!rel) return null;
   return Array.isArray(rel) ? rel[0] ?? null : rel;
 }
+
+/// An inbound request to be paid. Advisory: it prefills the create form and
+/// can never create a schedule. Written by `request-payment`, read through the
+/// `payment_requests_for` RPC.
+export type PaymentRequest = {
+  id: string;
+  payer_address: string;
+  to_address: string;
+  amount: string | null;
+  token_symbol: string | null;
+  interval_seconds: number | null;
+  max_runs: number | null;
+  from_name: string | null;
+  note: string | null;
+  status: "pending" | "dismissed" | "used";
+  created_at: string;
+};

@@ -17,6 +17,18 @@ export const CELO = {
   poolFee: Number(Deno.env.get("POOL_FEE_TIER") ?? 100),
 };
 
+/// The assets a Direct schedule can pay out, named.
+///
+/// The contract's own allowlist is the authority — this list only lets an
+/// endpoint say "USDT" and mean an address, and reject a symbol nothing here
+/// can pay. Decimals are not uniform (cUSD is 18dp) and are never assumed.
+/// Mirrors `web/lib/config.ts`; three entries that change about once a year.
+export const DIRECT_TOKENS = [
+  { symbol: "USDT", address: "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e", decimals: 6 },
+  { symbol: "USDC", address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6 },
+  { symbol: "cUSD", address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18 },
+] as const;
+
 /// Read lazily rather than snapshotted at import time. Eager reads capture
 /// whatever the environment held the instant the module graph was evaluated,
 /// which makes import order load-bearing and pins a missing secret to

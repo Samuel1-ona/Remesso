@@ -44,6 +44,7 @@ import {
 import { ActionBar, Amount, MINIPAY_DEPOSIT_URL, Row } from "@/components/ui";
 import { useIsMiniPay } from "@/lib/hooks";
 import { runsToCover } from "@/lib/allowance";
+import { isEmptyPayLink, parsePayLink, type PayLink } from "@/lib/payLink";
 import { UnusualCheck } from "@/components/UnusualCheck";
 import { isAddress } from "viem";
 
@@ -71,6 +72,9 @@ export default function NewSchedulePage() {
   const [terms, setTerms] = useState<TermsDraft>(defaultTerms);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /// What a `?to=…` link filled in, kept so the form can say so. Silently
+  /// prefilled money fields are how a link becomes a trick.
+  const [fromLink, setFromLink] = useState<PayLink | null>(null);
 
   // Direct schedules move the recipient's chosen asset; the swap rails always
   // move USDT, whatever the recipient ends up holding.
@@ -118,6 +122,34 @@ export default function NewSchedulePage() {
           : expiryProblem(terms) ?? triggerProblem(terms)
         : null;
   const canContinue = blocker === null;
+
+  // A "pay me here" link, applied once on arrival.
+  //
+  // Read from `window.location` rather than `useSearchParams` because that
+  // hook opts the route into a Suspense boundary at build time, and this is
+  // one read of a value that never changes while the page is open.
+  //
+  // It only ever fills EMPTY fields. A sender who has started typing is
+  // answering the question themselves, and a link that overwrites them is a
+  // link editing a payment while they look at it.
+  useEffect(() => {
+    const link = parsePayLink(window.location.search);
+    if (isEmptyPayLink(link)) return;
+    setFromLink(link);
+    setRecipient((r) => ({
+      ...r,
+      payoutType: "direct",
+      displayName: r.displayName || link.name || "",
+      walletAddress: isAddress(r.walletAddress) ? r.walletAddress : link.to ?? r.walletAddress,
+      token: link.token ?? r.token,
+    }));
+    setTerms((t) => ({
+      ...t,
+      amount: t.amount || link.amount || "",
+      intervalSeconds: link.intervalSeconds ?? t.intervalSeconds,
+      maxRuns: link.maxRuns ?? t.maxRuns,
+    }));
+  }, []);
 
   // The phase list and any error render at the foot of the page, under the
   // action bar on a short screen. Bring them into view so a wallet prompt or
@@ -320,6 +352,20 @@ export default function NewSchedulePage() {
       <div key={step} className="animate-rise mt-6">
         {step === 0 && (
           <>
+            {/* Said before the fields, not after: the sender should know the
+                recipient was handed to them before they read it, so they check
+                it against who they think they are paying rather than skimming
+                a value that looks like their own work. */}
+            {fromLink && (
+              <div className="notice-info mb-4">
+                <p className="font-medium">A payment link filled this in.</p>
+                <p className="mt-1 text-sm">
+                  {fromLink.note
+                    ? `"${fromLink.note}" — check the address below is who you mean to pay.`
+                    : "Check the address below is who you mean to pay. Nothing is sent until you sign."}
+                </p>
+              </div>
+            )}
             <DescribeSchedule onDraft={applyDraft} />
             <RecipientStep value={recipient} onChange={setRecipient} />
           </>

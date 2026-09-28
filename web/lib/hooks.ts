@@ -19,7 +19,7 @@ import {
   isConfigured,
   type TokenInfo,
 } from "./config";
-import type { Numeric, Run, Schedule } from "./types";
+import type { Numeric, PaymentRequest, Run, Schedule } from "./types";
 
 /// The `senders` row for the connected wallet. Everything else keys off it, so
 /// it is fetched once and shared rather than re-derived per component.
@@ -380,4 +380,27 @@ export function useMiniPayState(): boolean | undefined {
 /// keep calling `isMiniPay()` directly; they only ever run on the client.
 export function useIsMiniPay(): boolean {
   return useMiniPayState() === true;
+}
+
+/// Inbound "please pay me" requests addressed to this wallet.
+///
+/// Keyed on the connected address rather than the sender id: whoever is asking
+/// knows a wallet and nothing else about us, which is the whole point of the
+/// endpoint they used.
+export function usePaymentRequests() {
+  const { address } = useAccount();
+  return useQuery({
+    queryKey: ["payment-requests", address],
+    enabled: Boolean(address),
+    // These arrive while the app is open, and a request nobody sees is a
+    // request that did not happen. Cheap query, small table.
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase().rpc("payment_requests_for", {
+        p_address: address!,
+      });
+      if (error) throw new Error(error.message);
+      return (data ?? []) as PaymentRequest[];
+    },
+  });
 }

@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { classifyRun } from "@/lib/ai";
-import { useWriteContract } from "wagmi";
+import { useAccount, useWriteContract } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
 import { wagmiConfig } from "@/lib/wagmi";
 import { txOverrides } from "@/lib/tx";
@@ -30,7 +30,7 @@ import {
 } from "@/lib/format";
 import { RunPill, SchedulePill } from "@/components/StatusPill";
 import { ReapproveButton } from "@/components/Reapprove";
-import { Amount, MINIPAY_DEPOSIT_URL, Row, Sheet, Skeleton } from "@/components/ui";
+import { Amount, CopyValue, MINIPAY_DEPOSIT_URL, Row, Sheet, Skeleton } from "@/components/ui";
 import { one, type Run } from "@/lib/types";
 import { failureCopy } from "@/lib/failures";
 
@@ -44,6 +44,7 @@ export default function ScheduleDetailPage() {
   const inMiniPay = useIsMiniPay();
   const queryClient = useQueryClient();
   const { writeContractAsync } = useWriteContract();
+  const { address: connected } = useAccount();
 
   // `isPending`, not `isLoading`: the latter drops to false between retry
   // attempts, and this page would then say the schedule does not exist while
@@ -89,6 +90,12 @@ export default function ScheduleDetailPage() {
 
   const recipient = one(schedule.recipients);
   const isBank = recipient?.payout_type === "ngn_bank";
+  // A sender paying their own wallet. Rare, but the one case where showing
+  // the recipient address would be showing them their own — which MiniPay's
+  // listing rules forbid outright.
+  const isOwnWallet =
+    Boolean(connected) &&
+    recipient?.wallet_address?.toLowerCase() === connected?.toLowerCase();
   // Direct moves the funding asset untouched — there is no swap to link to.
   const converts = recipient?.payout_type !== "direct";
   const live = schedule.status === "active" || schedule.status === "paused";
@@ -214,6 +221,20 @@ export default function ScheduleDetailPage() {
         {schedule.expires_at && (
           <Row label="Expires">
             {new Date(schedule.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+          </Row>
+        )}
+        {/* The recipient's address, in full and copyable.
+            Shown so a sender can hand it to an agent that needs to watch for
+            these payments, and so they can check against what they were given
+            before the next transfer goes out. Never rendered when it is the
+            sender's own wallet: MiniPay's rules forbid showing the user their
+            own address, truncated forms included. */}
+        {!isBank && recipient?.wallet_address && !isOwnWallet && (
+          <Row label="Paid to">
+            <CopyValue
+              value={recipient.wallet_address}
+              display={`${recipient.wallet_address.slice(0, 10)}…${recipient.wallet_address.slice(-6)}`}
+            />
           </Row>
         )}
         {schedule.onchain_id && (

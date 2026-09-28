@@ -69,3 +69,10 @@ verify_jwt = false
 # the payment is the authentication.
 [functions.rate-service]
 verify_jwt = false
+
+# An agent asking to be paid. Unauthenticated for the same reason as the rest
+# of the agent surface — a caller has no Supabase JWT and should need no
+# account — and free, because a toll on asking to be paid is a toll in the
+# wrong place. It writes an advisory row; it cannot create a schedule.
+[functions.request-payment]
+verify_jwt = false
