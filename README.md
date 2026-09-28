@@ -227,9 +227,12 @@ page to hand someone pointing an agent at this.
 ### What this is not
 
 Per-minute granularity, not per-call streaming: `MIN_TRIGGER_GAP` is 60
-seconds. Gas (~$0.0005 a collection) puts a floor under useful payment sizes,
-so a cent is sensible and a thousandth of one is not. Sub-cent streaming would
-be payment channels, which none of this is.
+seconds. And gas is the real floor — **measured on our own transactions**, not
+taken from a published figure: a payment costs ~91,875 gas, which at 202 gwei
+and CELO near $0.09 is about **$0.0017**, and creating a schedule is ~224,000
+gas (~$0.004). So a one-cent payment loses roughly 17% to gas, and a payment of
+a few cents is the honest floor. Sub-cent streaming is payment channels, and
+none of this is that.
 
 ## Identity
 

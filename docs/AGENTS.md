@@ -46,10 +46,12 @@ curl -X POST https://engaboljiqudghvzmebq.supabase.co/functions/v1/rate-service 
 # 3. sign a USDC transfer authorisation for exactly that, retry with X-PAYMENT.
 ```
 
-The signature is EIP-3009 `TransferWithAuthorization` over the USDC domain
-(`name: "USDC"`, `version: "2"`, chainId 42220). Any x402 client does this.
-`scripts/x402-buy.ts` in this repo is a complete one in about 40 lines if you
-would rather read than install.
+The signature is EIP-3009 `TransferWithAuthorization`. Take the EIP-712 domain
+from the 402's `extra` field rather than hardcoding it — the seller states it,
+and a wrong domain makes every signature invalid for reasons the payer cannot
+see. For USDC on Celo today that is `name: "USDC"`, `version: "2"`, chainId
+42220. `examples/pay-remesso.ts` is a complete client in about 60 lines, meant
+to be read or pasted rather than installed.
 
 ### Services
 
@@ -105,9 +107,12 @@ executor (`0x3c754AD31e802D5fA65487f460dED65Aba749Cd1`) as the trigger.
 ## What this is not
 
 Per-minute granularity, not per-call streaming: `MIN_TRIGGER_GAP` is 60
-seconds. Gas of roughly $0.0005 a collection puts a floor under useful payment
-sizes — a cent is sensible, a thousandth of one is not. Sub-cent streaming is
-payment channels, and none of this is that.
+seconds. And gas is the real floor — **measured on our own transactions**, not
+taken from a published figure: a payment costs ~91,875 gas, which at 202 gwei
+and CELO near $0.09 is about **$0.0017**, and creating a schedule is ~224,000
+gas (~$0.004). So a one-cent payment loses roughly 17% to gas, and a payment of
+a few cents is the honest floor. Sub-cent streaming is payment channels, and
+none of this is that.
 
 The naira rails (cNGN to a wallet, or to a Nigerian bank account) are built and
 switched off pending the regulatory work in the README. Today everything
