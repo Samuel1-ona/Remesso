@@ -76,3 +76,9 @@ verify_jwt = false
 # wrong place. It writes an advisory row; it cannot create a schedule.
 [functions.request-payment]
 verify_jwt = false
+
+# Mirrors schedules created straight on the contract, so the executor can find
+# them. Cron-invoked with the service role, like the other pollers — never by a
+# caller from outside.
+[functions.sync-schedules]
+verify_jwt = true

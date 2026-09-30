@@ -365,15 +365,28 @@ for. `AGENT_SPEND_PRIVATE_KEY` is deliberately NOT the executor key — one key
 that both moves senders' money and spends ours is one compromise with two blast
 radii. `scripts/agent-pay.ts` drives it by hand.
 
-**A schedule created directly on-chain never runs on its cadence.**
-`execute-due-runs` takes its work from the `due_schedules` RPC — Postgres —
-which only holds schedules created through the app. `examples/create-schedule.ts`
-lets an agent be the payer, and schedule #7 (2026-09-30, agent-created) proved
-the consequence: `getSchedule` shows it, the allowance is real, `trigger-run`
-moved it, and the cron has never seen it. Closing this means discovering
-`ScheduleCreated` on-chain — the Goldsky subgraph already indexes it — and
-writing the mirror row. Until then an agent-created schedule is pull-only and
-wants `TRIGGER=remesso` so something can pull it.
+**`sync-schedules` adopts schedules created without the app.**
+`execute-due-runs` takes its work from `due_schedules` — Postgres — which held
+only what the app created. `examples/create-schedule.ts` lets an agent be the
+payer, and schedule #7 (2026-09-30, agent-created) proved the consequence: the
+mandate was real, the allowance was real, `trigger-run` moved it, and the cron
+had never heard of it. A valid schedule that silently never runs.
+
+It scans by id — `nextScheduleId()` for the bound, the mirrored ids for what is
+known, `getSchedule` for the difference — rather than indexing
+`ScheduleCreated`. No checkpoint, no block range, no reorg to unwind, and right
+up to a few hundred schedules; past that, index the event. **Not from the
+subgraph**, which an invariant keeps out of the money path.
+
+Every `*/5`, because this is discovery rather than payment. It skips what it
+cannot run (cancelled, expired, a cNGN rail while the rails are off, an
+interval under the table's 300s floor) rather than writing rows the executor
+re-derives its way out of every tick.
+
+It needed `senders.auth_user_id` to become nullable: a sender can now be a
+wallet and nothing else. Such a row is invisible under RLS — every policy
+compares to `auth.uid()` — until that wallet opens the app, when `claim_sender`
+adopts it and the chain-discovered schedules follow it in.
 
 Limits worth knowing before promising anything: `MIN_TRIGGER_GAP` is 60s, so
 this is per-minute granularity rather than per-call streaming, and gas sets the

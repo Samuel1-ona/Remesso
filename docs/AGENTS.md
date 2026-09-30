@@ -154,13 +154,13 @@ PAYER_KEY=... deno run --allow-env --allow-net create-schedule.ts
 transfer costs the payer exactly 0.05; the recipient receives 0.049875 and the
 treasury 0.000125. Budget from the gross.
 
-> **A schedule created this way runs only when triggered.** The cron that fires
-> payments on time reads a database that mirrors schedules created through the
-> app; one created directly on-chain is not in it, so its cadence will not fire
-> on its own. It is fully valid — `getSchedule` shows it, the allowance is
-> real, `runNow` and `trigger-run` move it — but until we close that gap,
-> treat an agent-created schedule as pull-only and set `TRIGGER=remesso` so
-> something can actually pull it.
+A schedule created this way is picked up within five minutes and then runs on
+its cadence like any other. The executor takes its work from a mirror of the
+chain, so a schedule created without the app has to be discovered first —
+`sync-schedules` does that every five minutes by reading the contract. Until
+it lands, the schedule is real but only `runNow` and `trigger-run` can move
+it, so `TRIGGER=remesso` is worth setting anyway: it lets you pull the first
+payment immediately instead of waiting.
 
 ## Collecting a payment early
 

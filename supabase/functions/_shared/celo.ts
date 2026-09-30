@@ -51,6 +51,7 @@ export const executorAbi = parseAbi([
 export const executorV4Abi = parseAbi([
   "function runNow(uint256 id, uint256 amountOutMinimum) returns (uint256)",
   "function triggerability(uint256 id, address caller) view returns (bool canTrigger, uint16 triggersLeft, uint64 earliestTrigger)",
+  "function nextScheduleId() view returns (uint256)",
   "function runnability(uint256 id) view returns (bool due, bool funded, bool approved, uint256 floor, uint64 nextRunAt)",
 ]);
 
@@ -205,6 +206,18 @@ export async function getSchedule(onchainId: bigint): Promise<OnchainSchedule> {
     functionName: "getSchedule",
     args: [onchainId],
   }) as OnchainSchedule;
+}
+
+/// One past the highest schedule id this contract has issued.
+///
+/// The upper bound for finding schedules created without the app — see
+/// `sync-schedules`. Cheap, and it needs no event indexing to be correct.
+export async function nextScheduleId(): Promise<bigint> {
+  return await publicClient.readContract({
+    address: CELO.executor,
+    abi: executorV4Abi,
+    functionName: "nextScheduleId",
+  }) as bigint;
 }
 
 /// Is the contract globally paused?
