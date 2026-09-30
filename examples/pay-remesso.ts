@@ -38,6 +38,13 @@ const URL_ = Deno.env.get("SERVICE") ??
 ///   MAX_UNITS=50000 deno run --allow-env --allow-net pay-remesso.ts
 const MAX_UNITS = BigInt(Deno.env.get("MAX_UNITS") ?? "10000");
 
+/// What to ask for. Most services take an empty object; `trigger-run` needs
+/// the schedule id, so it is a parameter rather than something to go and edit:
+///   BODY='{"schedule":"7"}' SERVICE=.../trigger-run
+/// The same body is sent for the quote and for the paid call — asking for one
+/// thing and paying for another is how a receipt stops matching the work.
+const BODY = Deno.env.get("BODY") ?? "{}";
+
 // Both names, with or without the 0x. Wallets export private keys every one of
 // these ways, and a key that is right but shaped differently should not read as
 // a key that is wrong.
@@ -55,7 +62,7 @@ console.log("paying as:", account.address);
 const quote = await fetch(URL_, {
   method: "POST",
   headers: { "content-type": "application/json" },
-  body: "{}",
+  body: BODY,
 });
 if (quote.status !== 402) {
   console.log("no payment required:", quote.status, await quote.text());
@@ -147,7 +154,7 @@ const paid = await fetch(URL_, {
       },
     })),
   },
-  body: "{}",
+  body: BODY,
 });
 console.log(`\nHTTP ${paid.status}`);
 console.log(await paid.text());
