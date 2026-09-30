@@ -365,6 +365,16 @@ for. `AGENT_SPEND_PRIVATE_KEY` is deliberately NOT the executor key — one key
 that both moves senders' money and spends ours is one compromise with two blast
 radii. `scripts/agent-pay.ts` drives it by hand.
 
+**A schedule created directly on-chain never runs on its cadence.**
+`execute-due-runs` takes its work from the `due_schedules` RPC — Postgres —
+which only holds schedules created through the app. `examples/create-schedule.ts`
+lets an agent be the payer, and schedule #7 (2026-09-30, agent-created) proved
+the consequence: `getSchedule` shows it, the allowance is real, `trigger-run`
+moved it, and the cron has never seen it. Closing this means discovering
+`ScheduleCreated` on-chain — the Goldsky subgraph already indexes it — and
+writing the mirror row. Until then an agent-created schedule is pull-only and
+wants `TRIGGER=remesso` so something can pull it.
+
 Limits worth knowing before promising anything: `MIN_TRIGGER_GAP` is 60s, so
 this is per-minute granularity rather than per-call streaming, and gas sets the
 floor. Measured on our own transactions 2026-09-28, not taken from a published

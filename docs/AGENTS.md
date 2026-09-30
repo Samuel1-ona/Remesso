@@ -138,6 +138,30 @@ runnability(uint256 id)                      // is a payment due, funded, allowe
 triggerability(uint256 id, address caller)   // may `caller` collect early
 ```
 
+## Paying on a schedule, as an agent
+
+`examples/create-schedule.ts` signs the mandate from your own wallet. Unlike
+paying per call, this needs **CELO for gas** — two transactions, an approval
+and the schedule — because you submit them yourself rather than a facilitator
+doing it for you.
+
+```bash
+TO=0xRecipient AMOUNT=0.05 TOKEN=USDT EVERY=week RUNS=2 TRIGGER=remesso \
+PAYER_KEY=... deno run --allow-env --allow-net create-schedule.ts
+```
+
+**The fee comes out of the payment, not on top of it.** At 25bps a 0.05 USDT
+transfer costs the payer exactly 0.05; the recipient receives 0.049875 and the
+treasury 0.000125. Budget from the gross.
+
+> **A schedule created this way runs only when triggered.** The cron that fires
+> payments on time reads a database that mirrors schedules created through the
+> app; one created directly on-chain is not in it, so its cadence will not fire
+> on its own. It is fully valid — `getSchedule` shows it, the allowance is
+> real, `runNow` and `trigger-run` move it — but until we close that gap,
+> treat an agent-created schedule as pull-only and set `TRIGGER=remesso` so
+> something can actually pull it.
+
 ## Collecting a payment early
 
 If the payer granted you the right — an address and a count, set when they

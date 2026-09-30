@@ -32,7 +32,7 @@
 ///   RUNS=2            how many transfers                   (default 2)
 ///   TRIGGER=remesso   allow early sending                  (default: none)
 ///   MAX_TOTAL=1       refuse if AMOUNT × RUNS exceeds this (default 1)
-import { createPublicClient, createWalletClient, http, parseAbi, parseUnits } from "npm:viem@2";
+import { createPublicClient, createWalletClient, http, parseAbi, parseEventLogs, parseUnits } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
 
@@ -65,9 +65,9 @@ const abi = parseAbi([
   "function allowance(address owner, address spender) view returns (uint256)",
   "function balanceOf(address) view returns (uint256)",
   "function executor() view returns (address)",
-  "function nextScheduleId() view returns (uint256)",
   "function directTokenAllowed(address) view returns (bool)",
   "function createSchedule(address destination,uint128 amountIn,uint64 interval,uint96 minRateE6,uint32 maxRuns,uint64 expiresAt,uint64 firstRunAt,uint8 payoutType,address token,address payoutToken,address trigger,uint16 triggersLeft) returns (uint256)",
+  "event ScheduleCreated(uint256 indexed id, address indexed sender, address indexed destination, uint128 amountIn, uint64 interval, uint96 minRateE6, uint32 maxRuns, uint64 expiresAt, uint8 payoutType)",
 ]);
 
 const key = (Deno.env.get("PAYER_KEY") ?? Deno.env.get("PRIVATE_KEY") ?? "").trim();
@@ -188,8 +188,14 @@ const approveHash = await wallet.writeContract({
   functionName: "approve",
   args: [EXECUTOR, current + total],
 } as never);
-await publicClient.waitForTransactionReceipt({ hash: approveHash });
+const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
 console.log(`  ${approveHash}`);
+// A mined transaction is not a successful one. Carrying on after a reverted
+// approval would create a schedule that can never move a token.
+if (approveReceipt.status !== "success") {
+  console.error("the approval reverted. Nothing was created.");
+  Deno.exit(1);
+}
 
 // 2. The mandate. Direct (payoutType 2) forwards the funding asset itself, so
 //    there is no conversion, no floor and no payout token — the contract zeroes
@@ -203,9 +209,22 @@ const hash = await wallet.writeContract({
 } as never);
 const receipt = await publicClient.waitForTransactionReceipt({ hash });
 console.log(`  ${hash}  (${receipt.status})`);
+if (receipt.status !== "success") {
+  console.error("the schedule was not created. The approval above still stands —");
+  console.error("set it back to 0 if you are not going to retry.");
+  Deno.exit(1);
+}
 
-// The id is whatever the counter reached. Read after the receipt so it is the
-// value this transaction produced.
-const next = await read("nextScheduleId", [], EXECUTOR) as bigint;
-console.log(`\nschedule #${next - 1n} is live.`);
-console.log(`verify it: cast call ${EXECUTOR} "getSchedule(uint256)" ${next - 1n} --rpc-url ${RPC}`);
+// The id comes from THIS transaction's own log, not from re-reading the
+// counter. `nextScheduleId` is a read against whichever node answers, and a
+// node one block behind returns the value from before this transaction — so
+// the script would print somebody else's schedule id with total confidence.
+// The receipt cannot lag itself.
+const [created] = parseEventLogs({ abi, eventName: "ScheduleCreated", logs: receipt.logs });
+if (!created) {
+  console.error(`created, but no ScheduleCreated log in ${hash} — read the receipt yourself.`);
+  Deno.exit(1);
+}
+const id = created.args.id;
+console.log(`\nschedule #${id} is live.`);
+console.log(`verify it: cast call ${EXECUTOR} "getSchedule(uint256)" ${id} --rpc-url ${RPC}`);
