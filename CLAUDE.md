@@ -274,6 +274,16 @@ allowance of triggers the sender sets, a 60s gap, and every limit they signed.
 The floor is measured on the NET amount: a floor is a rate, and charging it on
 the gross would tighten it by the fee.
 
+**Two currencies, one price.** `_shared/x402.ts` holds `ASSETS` — USDC and
+USA₮ — and a 402 offers both; the same `maxAmountRequired` is correct for each
+only because both are 6dp. x402 **v1's payload carries no asset**, so the
+seller cannot tell from `X-PAYMENT` which one the payer signed for:
+`verifyAny()` tries the candidates in order and settlement must reuse the entry
+that verified. Adding an 18dp asset (Ripio's wARS and friends) means pricing
+per asset AND `assetTransferMethod: "permit2"`, which is a different code path.
+USA₮'s domain is `Tether America USD` v1 — not the symbol — and its 18dp fee
+adapter `0x0357EE22…80C4` reports the same `symbol()`, so match on address.
+
 `trigger-run` sells one early send over x402 — an agent pays $0.01 USDC, one
 run fires ahead of cadence. The caller buys timing and nothing else. Order is
 verify -> run -> settle, so a reverted run charges nobody; a settlement that

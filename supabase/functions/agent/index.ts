@@ -12,7 +12,7 @@
 /// secret, quotes no sender, and names no schedule.
 import { CELO, DIRECT_TOKENS, SELF_API } from "../_shared/config.ts";
 import { ATTRIBUTION_CODE } from "../_shared/attribution.ts";
-import { X402 } from "../_shared/x402.ts";
+import { ASSETS, X402 } from "../_shared/x402.ts";
 import { executorAccount, executorV4 } from "../_shared/celo.ts";
 import { CNGN_RAILS_ENABLED } from "../_shared/rails.ts";
 
@@ -126,8 +126,9 @@ Deno.serve((req) => {
       {
         name: "naira-rate",
         description:
-          "Live USDT/NGN and USDC/NGN rates with spread, from on-chain RFQ makers. " +
-          "What Remesso uses to price a naira corridor honestly.",
+          "Live USDT/NGN and USDC/NGN from on-chain RFQ makers: bid, ask and " +
+          "last, with mid and spread when both sides are quoted and null for " +
+          "both when they are not. What Remesso prices a naira corridor from.",
         endpoint: `${BASE}/functions/v1/rate-service`,
         method: "POST",
         input: {},
@@ -136,7 +137,8 @@ Deno.serve((req) => {
             protocol: "x402",
             version: 1,
             network: "celo",
-            asset: "USDC",
+            // Several currencies, one price: every accepted asset is 6dp.
+            assets: ASSETS.map((a) => ({ symbol: a.symbol, address: a.address, eip712: { name: a.name, version: a.version } })),
             amount: Deno.env.get("RATE_SERVICE_PRICE_UNITS") ?? "1000",
             decimals: 6,
             facilitator: X402.base,
@@ -193,7 +195,10 @@ Deno.serve((req) => {
             protocol: "x402",
             version: 1,
             network: "celo",
-            asset: "USDC",
+            // Several currencies, one price: every accepted asset is 6dp.
+            // The address is the identity — USAT's 18dp fee adapter reports
+            // the same symbol, and paying against it is a 10^12 error.
+            assets: ASSETS.map((a) => ({ symbol: a.symbol, address: a.address, eip712: { name: a.name, version: a.version } })),
             amount: X402.priceUnits,
             decimals: 6,
             facilitator: X402.base,

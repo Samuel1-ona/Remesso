@@ -10,8 +10,9 @@
 /// the wallet needs USDC and no CELO at all.
 ///   deno run --allow-env --allow-net pay-remesso.ts
 ///
-/// Needs PAYER_KEY (or PRIVATE_KEY) — a wallet holding a little USDC on Celo,
-/// and no CELO. MAX_UNITS caps what it will pay; see below.
+/// Needs PAYER_KEY (or PRIVATE_KEY) — a wallet holding a little USDC or USAT
+/// on Celo, and no CELO. MAX_UNITS caps what it will pay; see below.
+/// ASSET=USAT picks a currency when the service offers more than one.
 ///
 /// On Node: `npm i viem`, change the imports to "viem", "viem/accounts" and
 /// "viem/chains" (Node cannot resolve `npm:` or a version suffix), swap
@@ -60,8 +61,26 @@ if (quote.status !== 402) {
   console.log("no payment required:", quote.status, await quote.text());
   Deno.exit(0);
 }
-const r = (await quote.json()).accepts[0];
-console.log(`price: ${Number(r.maxAmountRequired) / 1e6} USDC -> ${r.payTo}`);
+/// A 402 can offer several currencies. Pick by token ADDRESS, never by
+/// symbol: USAT and its 18-decimal fee adapter both report symbol "USAT", and
+/// paying against the adapter is a 10^12 mistake.
+const KNOWN: Record<string, string> = {
+  USDC: "0xceba9300f2b948710d2653dd7b07f33a8b32118c",
+  USAT: "0xd2ab3c9a02dbbab236bfec45d1d755df4267f771",
+};
+const accepts = (await quote.json()).accepts as Array<Record<string, any>>;
+const want = (Deno.env.get("ASSET") ?? "").toUpperCase();
+const r = want
+  ? accepts.find((a) => String(a.asset).toLowerCase() === KNOWN[want])
+  : accepts[0];
+if (!r) {
+  console.error(`this service does not take ${want}. it takes:`);
+  for (const a of accepts) console.error(`  ${a.extra?.name ?? "?"}  ${a.asset}`);
+  Deno.exit(1);
+}
+console.log(
+  `price: ${Number(r.maxAmountRequired) / 1e6} ${r.extra?.name ?? "?"} -> ${r.payTo}`,
+);
 
 // Checked before the signature, not after: a signed authorisation is the
 // payment, so there is no "cancel" once it exists.

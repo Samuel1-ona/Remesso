@@ -49,8 +49,18 @@ curl -X POST https://engaboljiqudghvzmebq.supabase.co/functions/v1/rate-service 
 The signature is EIP-3009 `TransferWithAuthorization`. Take the EIP-712 domain
 from the 402's `extra` field rather than hardcoding it — the seller states it,
 and a wrong domain makes every signature invalid for reasons the payer cannot
-see. For USDC on Celo today that is `name: "USDC"`, `version: "2"`, chainId
-42220. `examples/pay-remesso.ts` is a complete client in about 60 lines, meant
+see.
+
+**Pay in the currency you hold.** The 402 lists two, same price in each since
+both are 6dp: USDC (`0xcebA9300…118C`, domain `USDC` v2) and USA₮
+(`0xD2ab3C9A…F771`, domain **`Tether America USD`** v1). `ASSET=USAT` picks one
+in the example client.
+
+Two things to get right, both verified on-chain:
+`extra.name` is **not** the symbol — USA₮ signs as `Tether America USD`. And
+USA₮ has an 18-decimal fee-currency adapter at `0x0357EE22…80C4` reporting the
+same `symbol()`; match on the token **address**, never the symbol, or you are
+wrong by 10¹². `examples/pay-remesso.ts` is a complete client in about 60 lines, meant
 to be read or pasted rather than installed.
 
 ### Services
@@ -59,8 +69,8 @@ to be read or pasted rather than installed.
 |---|---|---|
 | `/functions/v1/agent` | free | Capabilities, prices, and what we refuse |
 | `/functions/v1/request-payment` | free | Ask a sender to pay you — prefills their form, decides nothing |
-| `/functions/v1/rate-service` | 0.001 USDC | Live USDT/NGN and USDC/NGN from on-chain RFQ makers — bid, ask and last, with mid and spread when both sides are quoted |
-| `/functions/v1/trigger-run` | 0.01 USDC | Bring one payment of an existing schedule forward |
+| `/functions/v1/rate-service` | 0.001 USDC or USAT | Live USDT/NGN and USDC/NGN from on-chain RFQ makers — bid, ask and last, with mid and spread when both sides are quoted |
+| `/functions/v1/trigger-run` | 0.01 USDC or USAT | Bring one payment of an existing schedule forward |
 
 `trigger-run` answers `403` before quoting a price if the schedule's payer has
 not granted our executor the right to collect, or if the schedule pays out in

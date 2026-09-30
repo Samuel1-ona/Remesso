@@ -19,10 +19,12 @@
 import {
   decodePayment,
   encodeSettlement,
+  ASSETS,
   paymentRequiredBody,
+  priced,
   requirements,
   settle,
-  verify,
+  verifyAny,
   X402,
 } from "../_shared/x402.ts";
 
@@ -53,7 +55,15 @@ Deno.serve(async (req) => {
         "Live USDT/NGN and USDC/NGN rates from on-chain RFQ makers: bid, ask " +
         "and last, with mid and spread when both sides are quoted and null " +
         "for both when the market is one-sided.",
-      price: { asset: "USDC", amount: PRICE_UNITS, decimals: 6, protocol: "x402", network: "celo" },
+      // One price, several currencies: every accepted asset is 6dp, so the
+      // same number of base units is the same money in each.
+      price: {
+        amount: PRICE_UNITS,
+        decimals: 6,
+        assets: ASSETS.map((a) => ({ symbol: a.symbol, address: a.address })),
+        protocol: "x402",
+        network: "celo",
+      },
       call: "POST with an X-PAYMENT header; POST without one to see the 402.",
     });
   }
@@ -61,13 +71,18 @@ Deno.serve(async (req) => {
 
   if (!X402.isConfigured) return json({ error: "this service is not configured to take payment" }, 503);
 
-  const reqs = { ...requirements(resource, "Live NGN rate"), maxAmountRequired: PRICE_UNITS };
+  const accepts = priced(requirements(resource, "Live NGN rate"), PRICE_UNITS);
 
   const payment = decodePayment(req.headers.get("x-payment"));
-  if (!payment) return json(paymentRequiredBody(reqs), 402);
+  if (!payment) return json(paymentRequiredBody(accepts), 402);
 
-  const check = await verify(payment, reqs);
-  if (!check.ok) return json(paymentRequiredBody(reqs, check.reason ?? "payment invalid"), 402);
+  // Which asset they paid in is discovered here, and settlement must use the
+  // same one: settling against a different entry would ask the facilitator to
+  // move a token the signature does not authorise.
+  const check = await verifyAny(payment, accepts);
+  if (!check.ok || !check.matched) {
+    return json(paymentRequiredBody(accepts, check.reason ?? "payment invalid"), 402);
+  }
 
   // Fetch before settling. A caller who paid and got nothing is worse than a
   // caller who got nothing and paid nothing.
@@ -79,7 +94,7 @@ Deno.serve(async (req) => {
     return json({ error: "rates unavailable — you were not charged" }, 503);
   }
 
-  const paid = await settle(payment, reqs);
+  const paid = await settle(payment, check.matched);
   if (!paid.ok) console.error("rate-service: SETTLEMENT FAILED after serving", check.payer);
 
   return new Response(

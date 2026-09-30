@@ -1,7 +1,7 @@
 /// A paid endpoint that asks Remesso to send a payment now.
 ///
 /// This is the part that makes Remesso callable rather than only watchable. An
-/// app, a person or another agent pays a cent in USDC over x402 and one run of
+/// app, a person or another agent pays a cent in USDC or USAT over x402 and one run of
 /// a schedule fires ahead of its cadence. No account, no API key, no invoice —
 /// the payment IS the authentication.
 ///
@@ -33,7 +33,7 @@ import {
   paymentRequiredBody,
   requirements,
   settle,
-  verify,
+  verifyAny,
   X402,
 } from "../_shared/x402.ts";
 
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
   // to a URL that does not exist is a bad receipt and a worse audit trail.
   const resource = Deno.env.get("X402_RESOURCE_URL") ||
     `${(Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "")}/functions/v1/trigger-run`;
-  const reqs = requirements(resource, `Send schedule #${raw} now`);
+  const accepts = requirements(resource, `Send schedule #${raw} now`);
 
   // Ask the contract before charging anyone. A schedule nobody nominated this
   // executor for is a 402 that would always fail, so it is a 403 instead —
@@ -110,12 +110,13 @@ Deno.serve(async (req) => {
   // --- the 402 half ------------------------------------------------------
   const payment = decodePayment(req.headers.get("x-payment"));
   if (!payment) {
-    return json(paymentRequiredBody(reqs), 402);
+    return json(paymentRequiredBody(accepts), 402);
   }
 
-  const check = await verify(payment, reqs);
-  if (!check.ok) {
-    return json(paymentRequiredBody(reqs, check.reason ?? "payment invalid"), 402);
+  // Settlement must reuse the entry that verified — see verifyAny.
+  const check = await verifyAny(payment, accepts);
+  if (!check.ok || !check.matched) {
+    return json(paymentRequiredBody(accepts, check.reason ?? "payment invalid"), 402);
   }
 
   // --- the work ----------------------------------------------------------
@@ -131,7 +132,7 @@ Deno.serve(async (req) => {
   }
 
   // --- settlement --------------------------------------------------------
-  const paid = await settle(payment, reqs);
+  const paid = await settle(payment, check.matched);
   if (!paid.ok) {
     // The run happened and we were not paid for it. Loud, because it is our
     // loss and the caller's free lunch — and because a facilitator failing
