@@ -99,8 +99,15 @@ Deno.serve(async (req) => {
 
   const payer = String(body.payer ?? "");
   const to = String(body.to ?? "");
-  if (!isAddress(payer)) return json({ error: "payer must be a wallet address" }, 400);
-  if (!isAddress(to)) return json({ error: "to must be a wallet address" }, 400);
+  // Both at once. Answering only about the first means a caller with two
+  // typos learns about them one round trip at a time.
+  const bad = [
+    isAddress(payer) ? null : "payer",
+    isAddress(to) ? null : "to",
+  ].filter(Boolean);
+  if (bad.length) {
+    return json({ error: `${bad.join(" and ")} must be a wallet address`, invalid: bad }, 400);
+  }
 
   const amount = body.amount == null ? null : String(body.amount).trim();
   if (amount !== null && !/^\d{1,12}(\.\d{1,18})?$/.test(amount)) {
@@ -169,7 +176,7 @@ Deno.serve(async (req) => {
   // A request that only exists inside our app is a request that waits for
   // somebody to open our app.
   const q = new URLSearchParams({ to });
-  if (fromName) q.set("name", fromName);
+  if (fromName) q.set("from", fromName);
   if (amount) q.set("amount", amount);
   if (token) q.set("token", token.symbol);
   if (every && intervalSeconds) q.set("every", every);

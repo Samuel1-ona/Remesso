@@ -11,7 +11,7 @@
 ///   deno run --allow-env --allow-net pay-remesso.ts
 ///
 /// Needs PAYER_KEY (or PRIVATE_KEY) — a wallet holding a little USDC on Celo,
-/// and no CELO.
+/// and no CELO. MAX_UNITS caps what it will pay; see below.
 ///
 /// On Node: `npm i viem`, change the imports to "viem", "viem/accounts" and
 /// "viem/chains" (Node cannot resolve `npm:` or a version suffix), swap
@@ -26,6 +26,16 @@ import { celo } from "npm:viem@2/chains";
 
 const URL_ = Deno.env.get("SERVICE") ??
   "https://engaboljiqudghvzmebq.supabase.co/functions/v1/rate-service";
+
+/// The most this script will pay for one call, in USDC base units (6dp), so
+/// 10_000 is one cent.
+///
+/// Without a ceiling, the seller names the price and the buyer signs it —
+/// which is fine until the price changes, the endpoint is swapped, or DNS is
+/// pointed somewhere else. The 402 is a quote from a stranger, and a quote you
+/// accept unread is not a quote. Raise it deliberately:
+///   MAX_UNITS=50000 deno run --allow-env --allow-net pay-remesso.ts
+const MAX_UNITS = BigInt(Deno.env.get("MAX_UNITS") ?? "10000");
 
 // Both names, with or without the 0x. Wallets export private keys every one of
 // these ways, and a key that is right but shaped differently should not read as
@@ -52,6 +62,16 @@ if (quote.status !== 402) {
 }
 const r = (await quote.json()).accepts[0];
 console.log(`price: ${Number(r.maxAmountRequired) / 1e6} USDC -> ${r.payTo}`);
+
+// Checked before the signature, not after: a signed authorisation is the
+// payment, so there is no "cancel" once it exists.
+if (BigInt(r.maxAmountRequired) > MAX_UNITS) {
+  console.error(
+    `refused: asked ${Number(r.maxAmountRequired) / 1e6} USDC, cap is ${Number(MAX_UNITS) / 1e6}.`,
+  );
+  console.error("raise it with MAX_UNITS=<base units> if that price is right.");
+  Deno.exit(1);
+}
 
 // 2. Sign a USDC transfer authorisation for exactly that amount (EIP-3009).
 const now = Math.floor(Date.now() / 1000);

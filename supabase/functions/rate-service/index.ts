@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
 
 type Rate = {
   pair: string;
-  bid: string;
-  ask: string;
+  bid: string | null;
+  ask: string | null;
   last: string;
   mid: number | null;
   spreadBps: number | null;
@@ -123,8 +123,13 @@ async function naira(): Promise<Rate[]> {
       const both = bid > 0 && ask > 0;
       return {
         pair: r.ticker_id,
-        bid: r.bid,
-        ask: r.ask,
+        // Null, not "0". The feed writes an unquoted side as zero, and passing
+        // that through publishes a price of nothing per dollar to anything
+        // that reads `bid` without first checking `mid` — a number that looks
+        // like data and is really an absence. Nulling the side is what makes
+        // the absence unmissable.
+        bid: bid > 0 ? r.bid : null,
+        ask: ask > 0 ? r.ask : null,
         last: r.last_price,
         // Naira quotes are ~4 significant figures; binary floats are not, and
         // 1374.3049999999998 reads as precision nobody has.

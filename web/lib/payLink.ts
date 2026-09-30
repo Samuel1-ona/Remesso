@@ -58,7 +58,11 @@ export function parsePayLink(search: string): PayLink {
 
   // Capped rather than sanitised: this is rendered as text by React, so the
   // risk is not injection but a link padding the screen with 10kB of junk.
-  const name = (q.get("name") ?? "").trim();
+  //
+  // `from` is what the request-payment API calls this field, `name` is what
+  // links built before it used. Both are read so neither spelling is a link
+  // that half-works.
+  const name = (q.get("from") ?? q.get("name") ?? "").trim();
   if (name) out.name = name.slice(0, 40);
   const note = (q.get("note") ?? "").trim();
   if (note) out.note = note.slice(0, 120);
@@ -103,7 +107,7 @@ export function buildPayLink(
   const q = new URLSearchParams();
   q.set("to", p.to);
   for (const [k, v] of Object.entries({
-    name: p.name,
+    from: p.name,
     amount: p.amount,
     token: p.token,
     every: p.every,
