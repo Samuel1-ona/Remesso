@@ -37,3 +37,13 @@ web/tsconfig.tsbuildinfo
 # supabase
 supabase/.branches/
 supabase/.temp/
+
+# Skills installed with `npx skills add`. `skills-lock.json` pins each source
+# and its hash, so this is restorable install output — 600K of someone else's
+# repo that would otherwise land in ours. `.claude/skills/` is symlinks into it.
+.agents/
+.claude/skills/
+
+# Left behind by running a Deno script inside the npm workspace. The web app
+# has no Deno dependencies; this is not its lockfile.
+web/deno.lock
