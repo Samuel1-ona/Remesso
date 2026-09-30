@@ -160,11 +160,14 @@ executor (`0x3c754AD31e802D5fA65487f460dED65Aba749Cd1`) as the trigger.
 
 ## What this is not
 
-Per-minute granularity, not per-call streaming: `MIN_TRIGGER_GAP` is 60
-seconds. And gas is the real floor — **measured on our own transactions**, not
+Per-minute granularity for early collection: `MIN_TRIGGER_GAP` is 60 seconds.
+(The cadence itself has no floor in the contract — the app's picker offers
+weekly upwards, but a schedule can be created at any interval, and live ones
+run hourly and every five minutes.) And gas is the real floor — **measured on our own transactions**, not
 taken from a published figure: a payment costs ~91,875 gas, which at 202 gwei
 and CELO near $0.09 is about **$0.0017**, and creating a schedule is ~224,000
-gas (~$0.004). So a one-cent payment loses roughly 17% to gas, and a payment of
+gas (~$0.004). An x402 settlement is ~85,800 gas in USDC and ~104,700 in USA₮
+(~22% more, measured on both) — the facilitator pays that one, not you. So a one-cent payment loses roughly 17% to gas, and a payment of
 a few cents is the honest floor. Sub-cent streaming is payment channels, and
 none of this is that.
 

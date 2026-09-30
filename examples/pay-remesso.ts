@@ -85,8 +85,11 @@ console.log(
 // Checked before the signature, not after: a signed authorisation is the
 // payment, so there is no "cancel" once it exists.
 if (BigInt(r.maxAmountRequired) > MAX_UNITS) {
+  // The currency comes from the quote, like the line above. Naming a token
+  // the payer did not choose is how a refusal reads as a different bug.
   console.error(
-    `refused: asked ${Number(r.maxAmountRequired) / 1e6} USDC, cap is ${Number(MAX_UNITS) / 1e6}.`,
+    `refused: asked ${Number(r.maxAmountRequired) / 1e6} ${r.extra?.name ?? "units"}, ` +
+      `cap is ${Number(MAX_UNITS) / 1e6}.`,
   );
   console.error("raise it with MAX_UNITS=<base units> if that price is right.");
   Deno.exit(1);
