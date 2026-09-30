@@ -1,0 +1,211 @@
+/// Commit to paying someone on a schedule, as an agent, from your own wallet.
+///
+/// The counterpart to `pay-remesso.ts`. That one pays per call: you ask, you
+/// are quoted, you sign, it is over. This one signs a MANDATE — a standing
+/// authorisation to move a fixed amount to a fixed address on a fixed rhythm,
+/// which the executor then carries out without asking you again.
+///
+/// That is a different kind of promise, so read what it can and cannot do:
+///
+///   - the recipient, the amount and the cadence are fixed HERE, at signing.
+///     Nothing can change them afterwards — not Remesso, not the contract
+///     owner, not you. Cancelling is the only edit.
+///   - it can never move more than `AMOUNT` per interval, never more than
+///     `RUNS` times, and never past the expiry.
+///   - it spends through an ERC-20 allowance you grant below. That allowance
+///     is the real ceiling: revoke it and every future run fails.
+///   - `TRIGGER=remesso` additionally lets Remesso's executor bring a payment
+///     forward — same recipient, same amount, consuming a scheduled payment
+///     rather than adding one. Leave it unset and only the clock moves money.
+///
+/// Unlike paying, this needs CELO for gas: two transactions, an approval and
+/// the schedule itself. Roughly 0.06 CELO at the time of writing.
+///
+///   deno run --allow-env --allow-net create-schedule.ts
+///
+/// Needs PAYER_KEY (or PRIVATE_KEY), TO, and AMOUNT. Everything else has a
+/// default:
+///   TO=0x…            who gets paid                        (required)
+///   AMOUNT=0.05       per transfer, in whole tokens        (required)
+///   TOKEN=USDT        USDT | USDC | cUSD                   (default USDT)
+///   EVERY=week        week | fortnight | month | quarter   (default week)
+///   RUNS=2            how many transfers                   (default 2)
+///   TRIGGER=remesso   allow early sending                  (default: none)
+///   MAX_TOTAL=1       refuse if AMOUNT × RUNS exceeds this (default 1)
+import { createPublicClient, createWalletClient, http, parseAbi, parseUnits } from "npm:viem@2";
+import { privateKeyToAccount } from "npm:viem@2/accounts";
+import { celo } from "npm:viem@2/chains";
+
+const RPC = Deno.env.get("CELO_RPC_URL") ?? "https://forno.celo.org";
+const EXECUTOR = (Deno.env.get("EXECUTOR") ??
+  "0x288b7cDD10e069eA64D4984c3E5fa0D9c5816009") as `0x${string}`;
+
+/// Decimals are NOT uniform: cUSD is 18dp while USDT and USDC are 6dp, so a
+/// fixed 6 is wrong by 10^12 for a third of this table. Addresses are the
+/// identity — several Celo tokens have fee-currency adapters reporting the
+/// same symbol with different decimals.
+const TOKENS: Record<string, { address: `0x${string}`; decimals: number }> = {
+  USDT: { address: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e", decimals: 6 },
+  USDC: { address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6 },
+  CUSD: { address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18 },
+};
+
+const CADENCE: Record<string, number> = {
+  week: 7 * 86400,
+  fortnight: 14 * 86400,
+  month: 30 * 86400,
+  quarter: 90 * 86400,
+};
+
+/// Parsed rather than passed as strings: viem encodes calldata from a real ABI
+/// object, and a bare string array reaches `readContract` as something it
+/// cannot encode.
+const abi = parseAbi([
+  "function approve(address spender, uint256 value) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function executor() view returns (address)",
+  "function nextScheduleId() view returns (uint256)",
+  "function directTokenAllowed(address) view returns (bool)",
+  "function createSchedule(address destination,uint128 amountIn,uint64 interval,uint96 minRateE6,uint32 maxRuns,uint64 expiresAt,uint64 firstRunAt,uint8 payoutType,address token,address payoutToken,address trigger,uint16 triggersLeft) returns (uint256)",
+]);
+
+const key = (Deno.env.get("PAYER_KEY") ?? Deno.env.get("PRIVATE_KEY") ?? "").trim();
+if (!/^(0x)?[0-9a-fA-F]{64}$/.test(key)) {
+  console.error("set PAYER_KEY (or PRIVATE_KEY) to a 32-byte hex private key");
+  Deno.exit(2);
+}
+const account = privateKeyToAccount((key.startsWith("0x") ? key : `0x${key}`) as `0x${string}`);
+
+const to = (Deno.env.get("TO") ?? "").trim() as `0x${string}`;
+if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+  console.error("set TO to the address you want to pay");
+  Deno.exit(2);
+}
+if (to.toLowerCase() === account.address.toLowerCase()) {
+  // Allowed by the contract, pointless in practice: the money returns to you
+  // minus the fee, and any balance check you run afterwards shows nothing.
+  console.error("TO is this wallet. A schedule paying itself only loses the fee.");
+  Deno.exit(2);
+}
+
+const token = TOKENS[(Deno.env.get("TOKEN") ?? "USDT").toUpperCase()];
+if (!token) {
+  console.error(`TOKEN must be one of ${Object.keys(TOKENS).join(", ")}`);
+  Deno.exit(2);
+}
+const interval = CADENCE[(Deno.env.get("EVERY") ?? "week").toLowerCase()];
+if (!interval) {
+  console.error(`EVERY must be one of ${Object.keys(CADENCE).join(", ")}`);
+  Deno.exit(2);
+}
+
+const runs = Number(Deno.env.get("RUNS") ?? "2");
+const amountText = (Deno.env.get("AMOUNT") ?? "").trim();
+if (!/^\d{1,12}(\.\d{1,18})?$/.test(amountText) || Number(amountText) <= 0) {
+  console.error("set AMOUNT to a positive decimal, e.g. AMOUNT=0.05");
+  Deno.exit(2);
+}
+if (!Number.isInteger(runs) || runs < 1 || runs > 4294967295) {
+  console.error("RUNS must be a whole number of transfers");
+  Deno.exit(2);
+}
+
+const amountIn = parseUnits(amountText, token.decimals);
+const total = amountIn * BigInt(runs);
+
+// The whole commitment, checked before anything is signed. A mandate is worth
+// a ceiling more than a single payment is: this one number is what the
+// schedule can cost you in total, and it is the last moment it is cheap to
+// notice it is wrong.
+const maxTotal = parseUnits(Deno.env.get("MAX_TOTAL") ?? "1", token.decimals);
+if (total > maxTotal) {
+  console.error(
+    `refused: ${amountText} × ${runs} = ${Number(total) / 10 ** token.decimals} ` +
+      `exceeds MAX_TOTAL of ${Number(maxTotal) / 10 ** token.decimals}.`,
+  );
+  Deno.exit(1);
+}
+
+const publicClient = createPublicClient({ chain: celo, transport: http(RPC) });
+const wallet = createWalletClient({ account, chain: celo, transport: http(RPC) });
+const read = (functionName: string, args: unknown[], address = token.address) =>
+  publicClient.readContract({ address, abi, functionName, args } as never);
+
+// Refuse early on the things the contract would revert on anyway, because a
+// revert costs gas and says less.
+const [allowed, balance, celoBalance] = await Promise.all([
+  read("directTokenAllowed", [token.address], EXECUTOR) as Promise<boolean>,
+  read("balanceOf", [account.address]) as Promise<bigint>,
+  publicClient.getBalance({ address: account.address }),
+]);
+if (!allowed) {
+  console.error(`refused: the executor does not accept ${Deno.env.get("TOKEN")} as a payout asset.`);
+  Deno.exit(1);
+}
+if (celoBalance === 0n) {
+  console.error("refused: this wallet has no CELO, and creating a schedule costs gas.");
+  console.error("Paying per call needs none; committing to a schedule does. Send it ~0.06 CELO.");
+  Deno.exit(1);
+}
+
+/// Who, if anyone, may bring a payment forward. `remesso` reads the address
+/// off the contract rather than trusting one written here — `setExecutor` can
+/// change it, and a grant naming a stale address refuses every call while
+/// looking permissive.
+const triggerEnv = (Deno.env.get("TRIGGER") ?? "").trim();
+const trigger = triggerEnv.toLowerCase() === "remesso"
+  ? await read("executor", [], EXECUTOR) as `0x${string}`
+  : /^0x[a-fA-F0-9]{40}$/.test(triggerEnv)
+  ? triggerEnv as `0x${string}`
+  : "0x0000000000000000000000000000000000000000" as const;
+const triggersLeft = trigger === "0x0000000000000000000000000000000000000000" ? 0 : Math.min(runs, 65535);
+
+// An hour past the last transfer, so a run that fires on the tick after its
+// due time still lands inside the schedule's life.
+const expiresAt = BigInt(Math.floor(Date.now() / 1000) + runs * interval + 3600);
+
+console.log(`paying as   : ${account.address}`);
+console.log(`to          : ${to}`);
+console.log(`amount      : ${amountText} ${Deno.env.get("TOKEN") ?? "USDT"} every ${Deno.env.get("EVERY") ?? "week"}`);
+console.log(`transfers   : ${runs}  (total ${Number(total) / 10 ** token.decimals})`);
+console.log(`early send  : ${triggersLeft ? `${trigger}, up to ${triggersLeft}` : "nobody"}`);
+console.log(`balance     : ${Number(balance) / 10 ** token.decimals}  ·  gas ${Number(celoBalance) / 1e18} CELO`);
+if (balance < amountIn) {
+  console.log("\nnote: the balance is below one transfer. The schedule is still valid —");
+  console.log("runs simply fail until it is funded. Nothing is lost by creating it.");
+}
+
+// 1. The allowance. This, not the schedule, is the real ceiling on what can
+//    ever be taken: approve exactly what this schedule needs, ON TOP of what
+//    is already approved, because `approve` replaces rather than adds and
+//    another schedule may be relying on the existing figure.
+const current = await read("allowance", [account.address, EXECUTOR]) as bigint;
+console.log(`\napproving ${Number(current + total) / 10 ** token.decimals} (existing ${Number(current) / 10 ** token.decimals} + this schedule)…`);
+const approveHash = await wallet.writeContract({
+  address: token.address,
+  abi,
+  functionName: "approve",
+  args: [EXECUTOR, current + total],
+} as never);
+await publicClient.waitForTransactionReceipt({ hash: approveHash });
+console.log(`  ${approveHash}`);
+
+// 2. The mandate. Direct (payoutType 2) forwards the funding asset itself, so
+//    there is no conversion, no floor and no payout token — the contract zeroes
+//    all three whatever is passed.
+console.log("creating the schedule…");
+const hash = await wallet.writeContract({
+  address: EXECUTOR,
+  abi,
+  functionName: "createSchedule",
+  args: [to, amountIn, BigInt(interval), 0n, runs, expiresAt, 0n, 2, token.address, "0x0000000000000000000000000000000000000000", trigger, triggersLeft],
+} as never);
+const receipt = await publicClient.waitForTransactionReceipt({ hash });
+console.log(`  ${hash}  (${receipt.status})`);
+
+// The id is whatever the counter reached. Read after the receipt so it is the
+// value this transaction produced.
+const next = await read("nextScheduleId", [], EXECUTOR) as bigint;
+console.log(`\nschedule #${next - 1n} is live.`);
+console.log(`verify it: cast call ${EXECUTOR} "getSchedule(uint256)" ${next - 1n} --rpc-url ${RPC}`);
