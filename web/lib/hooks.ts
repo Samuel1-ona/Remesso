@@ -8,7 +8,7 @@ import { supabase } from "./supabase";
 import { identityStanding } from "./api";
 import { fetchOnchainRuns, goldskyEnabled } from "./goldsky";
 import { mergeHistory } from "./history";
-import { executorAbi, erc20Abi, quoterAbi } from "./abi";
+import { executorAbi, executorAddressAbi, erc20Abi, quoterAbi } from "./abi";
 import {
   CNGN,
   DIRECT_TOKENS,
@@ -403,4 +403,22 @@ export function usePaymentRequests() {
       return (data ?? []) as PaymentRequest[];
     },
   });
+}
+
+/// The address a sender grants when they allow early sending.
+///
+/// Read from the contract, not configured. `setExecutor` can change it, and a
+/// grant naming a stale address is a grant that silently does nothing — the
+/// schedule would look permissive and refuse every call.
+export function useTriggerAddress() {
+  const q = useReadContract({
+    address: EXECUTOR_ADDRESS,
+    abi: executorAddressAbi,
+    functionName: "executor",
+    query: { enabled: isConfigured(), staleTime: 60 * 60_000 },
+  });
+  // Narrowed by hand: viem infers nothing useful from a one-entry
+  // human-readable ABI, and an address that arrives as `{}` is an address the
+  // caller will happily write into a grant.
+  return { ...q, data: q.data as `0x${string}` | undefined };
 }

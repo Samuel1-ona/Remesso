@@ -19,6 +19,7 @@ import {
   useRunnability,
   useSchedule,
   useTimeUntil,
+  useTriggerAddress,
 } from "@/lib/hooks";
 import { recipientLabel } from "@/lib/identity";
 import {
@@ -45,6 +46,7 @@ export default function ScheduleDetailPage() {
   const queryClient = useQueryClient();
   const { writeContractAsync } = useWriteContract();
   const { address: connected } = useAccount();
+  const { data: triggerAddress } = useTriggerAddress();
 
   // `isPending`, not `isLoading`: the latter drops to false between retry
   // attempts, and this page would then say the schedule does not exist while
@@ -300,8 +302,17 @@ export default function ScheduleDetailPage() {
                 {onchain.triggersLeft} {onchain.triggersLeft === 1 ? "transfer" : "transfers"}
               </span>
             </p>
-            <p className="mono mt-1 text-[12px] text-ink-2">
-              {onchain.trigger.slice(0, 10)}…{onchain.trigger.slice(-6)}
+            {/* "Remesso" when it is our executor, hex when it is not — the
+                same rule as the review step. A sender who never typed an
+                address cannot check one. */}
+            <p className="mt-1 text-[12px] text-ink-2">
+              {triggerAddress && onchain.trigger.toLowerCase() === triggerAddress.toLowerCase()
+                ? "Remesso, on your behalf"
+                : (
+                  <span className="mono">
+                    {onchain.trigger.slice(0, 10)}…{onchain.trigger.slice(-6)}
+                  </span>
+                )}
             </p>
             <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
               Same amount, same person, and never more often than once a minute. It

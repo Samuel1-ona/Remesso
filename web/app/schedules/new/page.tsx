@@ -25,7 +25,7 @@ import {
   type TokenInfo,
 } from "@/lib/config";
 import { supabase, ensureSender } from "@/lib/supabase";
-import { useAllowance, useFeeBps, useMarketRate, useUsdtBalance } from "@/lib/hooks";
+import { useAllowance, useFeeBps, useMarketRate, useTriggerAddress, useUsdtBalance } from "@/lib/hooks";
 import { everyLabel, formatUnits, rateToNairaPerUsd, spanLabel } from "@/lib/format";
 import {
   RecipientStep,
@@ -507,6 +507,7 @@ function Review({
     : undefined;
   const short = balance !== undefined && amountIn !== null && balance < amountIn;
   const isBank = recipient.payoutType === "ngn_bank";
+  const { data: triggerAddress } = useTriggerAddress();
 
   return (
     <div>
@@ -552,14 +553,21 @@ function Review({
         )}
         {terms.trigger.trim() && (
           <Row
-            label="Collected by"
-            sub={`Can bring forward ${terms.triggersLeft} ${
+            label="Can send early"
+            sub={`Up to ${terms.triggersLeft} ${
               terms.triggersLeft === "1" ? "transfer" : "transfers"
-            }. Same amount, same person, and you can withdraw it any time.`}
+            }, brought forward. Same amount, same person, and you can withdraw it any time.`}
           >
-            <span className="mono text-[13px]">
-              {terms.trigger.slice(0, 6)}…{terms.trigger.slice(-4)}
-            </span>
+            {/* A name when we are the one being allowed, the address when it is
+                somebody else. Showing hex to a sender who never typed any is
+                asking them to verify a string they have no way to check. */}
+            {triggerAddress && terms.trigger.toLowerCase() === triggerAddress.toLowerCase()
+              ? "Remesso"
+              : (
+                <span className="mono text-[13px]">
+                  {terms.trigger.slice(0, 6)}…{terms.trigger.slice(-4)}
+                </span>
+              )}
           </Row>
         )}
         <Row label="Transfers">{terms.maxRuns || "Until you stop it"}</Row>

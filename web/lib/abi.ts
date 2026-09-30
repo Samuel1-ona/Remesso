@@ -241,3 +241,17 @@ export const quoterAbi = [
     ],
   },
 ] as const;
+
+/// `executor()` on its own, deliberately not folded into `executorAbi`.
+///
+/// Adding one more entry there pushes viem past the point where it can infer
+/// return types from the array, and every other read silently degrades to `{}`
+/// — `triggerability` and `getSchedule` included. A one-line ABI costs nothing
+/// and keeps that inference intact.
+///
+/// Read from the contract rather than kept in an env var: `setExecutor` can
+/// change it, and a grant the sender signs has to name the address that will
+/// actually do the sending.
+export const executorAddressAbi = [
+  "function executor() view returns (address)",
+] as const;

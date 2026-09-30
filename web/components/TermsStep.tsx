@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMarketRate } from "@/lib/hooks";
+import { useMarketRate, useTriggerAddress } from "@/lib/hooks";
 import {
   INTERVALS,
   SELECTABLE_INTERVALS,
@@ -103,10 +103,9 @@ export function expiryProblem(terms: TermsDraft): string | null {
 
 /// Why this trigger grant cannot be signed, or null.
 ///
-/// Nothing in the sender UI sets one today — granting is an agent-side flow,
-/// done through the API rather than a form on a phone. Kept because the draft
-/// still carries the fields and the create call still passes them, so the
-/// moment anything sets them they are checked rather than trusted.
+/// Set by the "Let this be sent early" switch, which fills in our own
+/// executor's address so a sender never handles one. The address field behind
+/// "use a different address" is for someone pointing at their own agent.
 ///
 /// A grant is a pull on the sender's wallet. It is bounded — one transfer, to
 /// the destination they fixed, at most `triggersLeft` times, no more than once
@@ -353,6 +352,108 @@ export function TermsStep({
         </span>
         <Switch checked={value.startNow} onChange={(v) => set({ startNow: v })} />
       </label>
+
+      <EarlySending value={value} set={set} />
+    </div>
+  );
+}
+
+/// "Let this be sent early" — the grant that makes a schedule callable.
+///
+/// This is the control that turns a schedule from something only the clock can
+/// move into something a sender's app or assistant can act on. It was an
+/// address field and a count once, which asked an audience that found the word
+/// "approve" hard to paste a hex string and pick a number. Now it is a switch:
+/// on means our executor, for as many transfers as the schedule has.
+///
+/// What the switch does NOT do is worth being exact about, because a sender
+/// reading "let something else send this" deserves to know the shape of what
+/// they are handing over. `runNow` sends ONE transfer, of the amount they
+/// fixed, to the person they fixed, and consumes a scheduled payment rather
+/// than adding one — so the total can never exceed what they signed for. It
+/// cannot repeat within 60 seconds, cannot outlive the expiry, and can be
+/// withdrawn at any moment. The grant buys timing; it buys nothing else.
+function EarlySending({
+  value,
+  set,
+}: {
+  value: TermsDraft;
+  set: (patch: Partial<TermsDraft>) => void;
+}) {
+  const { data: trigger } = useTriggerAddress();
+  const [custom, setCustom] = useState(false);
+
+  // As many as the schedule has. An open-ended schedule gets the contract's
+  // own ceiling: `triggersLeft` is a uint16, and each pull still consumes a
+  // scheduled payment, so this is "any of them", not "more of them".
+  const grantCount = () => String(Number(value.maxRuns) || 65535);
+
+  const on = Boolean(value.trigger);
+  const mine = trigger && value.trigger.toLowerCase() === trigger.toLowerCase();
+
+  function toggle(next: boolean) {
+    if (!next) return set({ trigger: "", triggersLeft: "0" });
+    if (!trigger) return; // address not read yet; the switch stays off
+    set({ trigger, triggersLeft: grantCount() });
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface px-4 py-3.5">
+      <label className="flex items-center justify-between gap-4">
+        <span className="text-[15px] text-ink">
+          Let this be sent early
+          <span className="mt-0.5 block text-[13px] text-ink-2">
+            Something you authorise — an app, an assistant — can bring a transfer
+            forward. It still goes to the same person, for the same amount, and
+            stops when you say.
+          </span>
+        </span>
+        <Switch checked={on} onChange={toggle} />
+      </label>
+
+      {on && (
+        <p className="hint mt-3">
+          {mine && !custom
+            ? "Remesso can bring a transfer forward on your behalf. Nothing else can."
+            : "That address can bring a transfer forward. Nothing else can."}{" "}
+          You can withdraw this at any time from the schedule.
+        </p>
+      )}
+
+      {/* Behind a disclosure because almost nobody wants it, and the ones who
+          do are pointing at an agent they run themselves. */}
+      {on && (
+        <>
+          {!custom && (
+            <button
+              type="button"
+              className="mt-2 text-[13px] text-ink-2 underline underline-offset-2"
+              onClick={() => setCustom(true)}
+            >
+              Use a different address
+            </button>
+          )}
+          {custom && (
+            <div className="mt-3 space-y-2">
+              <input
+                className="field"
+                placeholder="0x… the address you are allowing"
+                autoComplete="off"
+                spellCheck={false}
+                value={value.trigger}
+                onChange={(e) => set({ trigger: e.target.value.trim() })}
+              />
+              <input
+                className="field"
+                inputMode="numeric"
+                placeholder="How many transfers it may bring forward"
+                value={value.triggersLeft === "0" ? "" : value.triggersLeft}
+                onChange={(e) => set({ triggersLeft: e.target.value.replace(/\D/g, "") })}
+              />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
