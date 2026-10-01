@@ -1,8 +1,17 @@
 # Connecting an agent to Remesso
 
 Nothing to clone, nothing to install, no key shared with anyone. Remesso is
-three HTTP endpoints and a contract. This page is what another agent — or the
+four HTTP endpoints and a contract. This page is what another agent — or the
 person pointing one at us — needs.
+
+**Pointing an agent here takes one line.** `skills/remesso/SKILL.md` is the
+same ground written for an agent to load rather than a person to read:
+
+```bash
+npx skills add crackedstudio/Remesso
+# or just fetch it:
+# https://raw.githubusercontent.com/crackedstudio/Remesso/main/skills/remesso/SKILL.md
+```
 
 | | |
 |---|---|

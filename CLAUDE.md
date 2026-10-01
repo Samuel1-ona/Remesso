@@ -346,6 +346,13 @@ signed by the executor (`0x3c754AD3…49Cd1`) and bounded by the contract.
 
 ## Agents: being paid, and paying
 
+`skills/remesso/SKILL.md` is the integration guide an agent loads instead of
+being sent a brief — the same arrangement Celo uses for `x402.celo.org/skill.md`.
+It carries prices and addresses, so it has the same obligation as the ERC-8004
+entry: **a skill that describes a version we no longer serve is worse than no
+skill**, because it will be believed. Re-read it whenever the wire format,
+prices or allowlists change.
+
 Three pieces, all live.
 
 **A payer can grant a program the right to collect.** `createSchedule` takes a
