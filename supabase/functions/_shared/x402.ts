@@ -63,9 +63,11 @@ export const X402 = {
 ///     valid for a domain nobody uses, and the failure surfaces as an opaque
 ///     rejection rather than "wrong name".
 ///  2. **Each has an 18-decimal fee-currency adapter reporting the SAME
-///     symbol.** USAT's is `0x0357EE22278c922e1D36cFe6b899269b161880C4`
-///     (decimals 6 vs 18, symbol "USAT" on both). Quoting a price against an
-///     adapter is a 10^12 error. These addresses are the tokens.
+///     symbol.** USAT's is `0x0357EE22278c922e1D36cFe6b899269b161880C4` and
+///     USDT's is `0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72`. Quoting a price
+///     against an adapter is a 10^12 error. These addresses are the tokens.
+///     USDT's `symbol()` is also literally "USD₮", not "USDT" — one more
+///     reason nothing here matches on a symbol.
 ///
 /// Neither token exposes `version()` and `eip712Domain()` reverts on all of
 /// them, so these values cannot be read at runtime. They come from the
@@ -76,6 +78,16 @@ export const ASSETS = [
     address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C" as `0x${string}`,
     name: "USDC",
     version: "2",
+    decimals: 6,
+  },
+  {
+    // Most widely held of the three on Celo, and the funding asset MiniPay
+    // mandates — but second here, because USDC is what the SDK treats as the
+    // chain's default asset and a payer with no selector gets `accepts[0]`.
+    symbol: "USDT",
+    address: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e" as `0x${string}`,
+    name: "Tether USD",
+    version: "1",
     decimals: 6,
   },
   {
