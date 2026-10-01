@@ -29,20 +29,21 @@ import {
 import { CNGN_RAILS_ENABLED, PAYOUT_DIRECT, RAIL_DISABLED_DETAIL } from "../_shared/rails.ts";
 import {
   decodePayment,
-  encodeSettlement,
-  paymentRequiredBody,
+  paymentRequired,
   requirements,
   settle,
-  verifyAny,
+  settlementHeaders,
+  verify,
   X402,
+  X402_CORS,
 } from "../_shared/x402.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, x-payment",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  // Without this an agent's browser-side client cannot read the settlement.
-  "Access-Control-Expose-Headers": "x-payment-response",
+  // Without these an agent's browser-side client can neither discover the
+  // price nor read the settlement.
+  ...X402_CORS,
 };
 
 Deno.serve(async (req) => {
@@ -70,7 +71,8 @@ Deno.serve(async (req) => {
   // to a URL that does not exist is a bad receipt and a worse audit trail.
   const resource = Deno.env.get("X402_RESOURCE_URL") ||
     `${(Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "")}/functions/v1/trigger-run`;
-  const accepts = requirements(resource, `Send schedule #${raw} now`);
+  const accepts = requirements();
+  const what = { url: resource, description: `Send schedule #${raw} now`, mimeType: "application/json" };
 
   // Ask the contract before charging anyone. A schedule nobody nominated this
   // executor for is a 402 that would always fail, so it is a 403 instead —
@@ -108,15 +110,17 @@ Deno.serve(async (req) => {
   }
 
   // --- the 402 half ------------------------------------------------------
-  const payment = decodePayment(req.headers.get("x-payment"));
+  const payment = decodePayment(req);
   if (!payment) {
-    return json(paymentRequiredBody(accepts), 402);
+    const q = paymentRequired(accepts, what);
+    return json(q.body, 402, q.headers);
   }
 
-  // Settlement must reuse the entry that verified — see verifyAny.
-  const check = await verifyAny(payment, accepts);
+  // Settlement must reuse the entry that verified — see `verify`.
+  const check = await verify(payment, accepts, what);
   if (!check.ok || !check.matched) {
-    return json(paymentRequiredBody(accepts, check.reason ?? "payment invalid"), 402);
+    const q = paymentRequired(accepts, what, check.reason ?? "payment invalid");
+    return json(q.body, 402, q.headers);
   }
 
   // --- the work ----------------------------------------------------------
@@ -132,7 +136,7 @@ Deno.serve(async (req) => {
   }
 
   // --- settlement --------------------------------------------------------
-  const paid = await settle(payment, check.matched);
+  const paid = await settle(payment, check.matched, what);
   if (!paid.ok) {
     // The run happened and we were not paid for it. Loud, because it is our
     // loss and the caller's free lunch — and because a facilitator failing
@@ -145,13 +149,13 @@ Deno.serve(async (req) => {
     headers: {
       ...CORS,
       "Content-Type": "application/json",
-      "X-PAYMENT-RESPONSE": encodeSettlement(paid.txHash),
+      ...settlementHeaders(paid.txHash),
     },
   });
 });
 
-const json = (b: unknown, status = 200) =>
+const json = (b: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(b), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", ...extra },
   });

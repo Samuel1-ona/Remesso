@@ -6,6 +6,12 @@
 /// authorisation for exactly that price, ask again with it attached. Nothing
 /// here is Remesso-specific — the same file pays any x402 service on Celo.
 ///
+/// **The standard client also works now, and is shorter.** As of 2026-10-01
+/// these endpoints speak x402 v2, so `@x402/fetch` pays them with no bespoke
+/// code — see docs/AGENTS.md. This file stays because it is readable: every
+/// field of the signature is visible, which a wrapped `fetch` hides. It
+/// speaks v1, which the server still accepts.
+///
 /// EIP-3009 means the facilitator submits the transfer and pays the gas, so
 /// the wallet needs USDC and no CELO at all.
 ///   deno run --allow-env --allow-net pay-remesso.ts

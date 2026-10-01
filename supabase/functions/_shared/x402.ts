@@ -13,6 +13,22 @@
 ///
 /// Verify before the work, settle after it. A caller whose run reverts should
 /// not be charged, and a caller who is charged should have had their run.
+///
+/// **We speak v2, and still accept v1.** The 402 we send is v2 — CAIP-2
+/// network, `amount` rather than `maxAmountRequired`, a `resource` object, and
+/// `accepted` echoed back in the payment. That is not cosmetic: measured on
+/// 2026-10-01, `@x402/fetch` 2.28.0 built exactly as Celo's own guide
+/// documents refuses a v1 response outright —
+///
+///   Failed to create payment payload: No client registered for x402 version: 1
+///
+/// — so every agent reaching for the standard SDK, which is the obvious thing
+/// to do, could not pay us at all. Only our own hand-written client could,
+/// which is precisely why nothing ever surfaced it.
+///
+/// Inbound v1 payments are still honoured, because `examples/pay-remesso.ts`
+/// spoke v1 and copies of it are already in other people's hands. The
+/// facilitator advertises both, so this costs one branch and strands nobody.
 
 export const X402 = {
   get base(): string {
@@ -80,46 +96,51 @@ const USDC: `0x${string}` = ASSETS[0].address;
 /// `{x402Version: 2, network: "eip155:42220"}` — and pairing a version with
 /// the other version's name is rejected as `unsupported_scheme`, which reads
 /// like a scheme problem and is really a naming one. Seen 2026-09-22.
-const NETWORK = Deno.env.get("X402_NETWORK") ?? "celo";
+const NETWORK = Deno.env.get("X402_NETWORK") ?? "eip155:42220";
 
+/// What v1 called this chain. Kept only to verify payments from clients built
+/// against the old shape; nothing advertises it any more.
+const NETWORK_V1 = "celo";
+
+/// v2's requirements object. Four fields fewer than v1's and one renamed:
+/// `amount`, not `maxAmountRequired`. `resource`, `description`, `mimeType`
+/// and `outputSchema` moved out of each entry and into the one `resource`
+/// object on the envelope, which is the right shape — they describe the thing
+/// being sold, not the currency it is sold in.
 export type PaymentRequirements = {
   scheme: "exact";
   network: string;
-  resource: string;
-  description: string;
-  mimeType: string;
-  payTo: string;
-  maxAmountRequired: string;
   asset: string;
+  amount: string;
+  payTo: string;
   maxTimeoutSeconds: number;
-  outputSchema: Record<string, unknown>;
   extra: { name: string; version: string };
+};
+
+/// What is being sold, once, rather than repeated per currency.
+export type ResourceInfo = {
+  url: string;
+  description?: string;
+  mimeType?: string;
 };
 
 /// One entry per asset we accept, which is what the `accepts` array of a 402
 /// is for: the payer picks the currency they already hold.
 ///
-/// Every asset here is 6dp, so one `maxAmountRequired` is correct for all of
-/// them. Adding an 18dp asset (Ripio's wARS and friends) means pricing per
-/// asset at its own scale — and those settle through Permit2 rather than
-/// EIP-3009, so they need `assetTransferMethod` too. Not a line to add
-/// casually.
-export function requirements(resource: string, description: string): PaymentRequirements[] {
+/// Every asset here is 6dp, so one `amount` is correct for all of them.
+/// Adding an 18dp asset (Ripio's wARS and friends) means pricing per asset at
+/// its own scale — and those settle through Permit2 rather than EIP-3009, so
+/// they need `assetTransferMethod` in `extra` too. Not a line to add casually.
+export function requirements(): PaymentRequirements[] {
   return ASSETS.map((a) => ({
     scheme: "exact" as const,
     network: NETWORK,
-    resource,
-    description,
-    mimeType: "application/json",
-    payTo: X402.payTo,
-    maxAmountRequired: X402.priceUnits,
     asset: a.address,
+    amount: X402.priceUnits,
+    payTo: X402.payTo,
     // Long enough for a signature round trip, short enough that a stale
     // authorisation cannot be replayed against a later price.
     maxTimeoutSeconds: 60,
-    // Part of the V1 requirements shape. Empty is legal; absent is not, for
-    // verifiers that validate the object before looking at the signature.
-    outputSchema: {},
     // The EIP-712 domain the payer signs against. Getting this wrong makes
     // every signature invalid for reasons the payer cannot see.
     extra: { name: a.name, version: a.version },
@@ -132,15 +153,57 @@ export function requirements(resource: string, description: string): PaymentRequ
 /// entry publishes two different prices for the same call and the cheaper one
 /// is the one a payer picks.
 export function priced(reqs: PaymentRequirements[], units: string): PaymentRequirements[] {
-  return reqs.map((r) => ({ ...r, maxAmountRequired: units }));
+  return reqs.map((r) => ({ ...r, amount: units }));
 }
 
-/// The body of a 402. It is the price list, in the shape x402 clients parse.
-export function paymentRequiredBody(
-  accepts: PaymentRequirements | PaymentRequirements[],
+/// A 402 that both versions can read.
+///
+/// v2 does not put the price list in the body at all — it goes in a
+/// `PAYMENT-REQUIRED` header as base64 JSON, and the client reads the body
+/// only when that header is absent, for v1 compatibility. So one response
+/// serves everyone: the header carries v2, the body carries v1, and each
+/// client finds its own and ignores the other.
+///
+/// This is the piece that was actually wrong. Answering v1 in the body was
+/// not an old dialect a modern client could still read — it was a response
+/// `@x402/fetch` rejects before looking at the price.
+export function paymentRequired(
+  accepts: PaymentRequirements[],
+  resource: ResourceInfo,
   error = "payment required",
-) {
-  return { x402Version: 1, error, accepts: Array.isArray(accepts) ? accepts : [accepts] };
+): { body: unknown; headers: Record<string, string> } {
+  return {
+    // v1 shape, because the body is where a v1 client looks.
+    body: {
+      x402Version: 1,
+      error,
+      accepts: accepts.map((a) => asV1(a, resource)),
+    },
+    headers: {
+      "PAYMENT-REQUIRED": btoa(JSON.stringify({ x402Version: 2, error, resource, accepts })),
+    },
+  };
+}
+
+/// The same price list in v1's shape, for a client that only speaks v1.
+///
+/// Not advertised anywhere — this exists so that a v1 payment can be verified
+/// and settled against requirements the facilitator will recognise. The
+/// numbers are the same; only the field names and the network string differ.
+function asV1(r: PaymentRequirements, resource: ResourceInfo) {
+  return {
+    scheme: r.scheme,
+    network: NETWORK_V1,
+    resource: resource.url,
+    description: resource.description ?? "",
+    mimeType: resource.mimeType ?? "application/json",
+    payTo: r.payTo,
+    maxAmountRequired: r.amount,
+    asset: r.asset,
+    maxTimeoutSeconds: r.maxTimeoutSeconds,
+    outputSchema: {},
+    extra: r.extra,
+  };
 }
 
 async function facilitator(path: string, body: unknown): Promise<Record<string, unknown> | null> {
@@ -175,58 +238,83 @@ async function facilitator(path: string, body: unknown): Promise<Record<string, 
   }
 }
 
-/// Is this signed authorisation good for this price? Nothing has moved yet.
-export async function verify(
-  paymentPayload: unknown,
-  paymentRequirements: PaymentRequirements,
-): Promise<{ ok: boolean; reason?: string; payer?: string }> {
-  const out = await facilitator("/verify", { x402Version: 1, paymentPayload, paymentRequirements });
-  if (!out) return { ok: false, reason: "payment verification unavailable" };
-  return {
-    ok: out.isValid === true,
-    reason: typeof out.invalidReason === "string" ? out.invalidReason : undefined,
-    payer: typeof out.payer === "string" ? out.payer : undefined,
-  };
+/// Which version did this payer speak, and which of OUR entries did they pay?
+///
+/// v2 echoes the chosen requirements back as `accepted`, which is how a seller
+/// learns the currency without guessing. But it is the PAYER's copy, so it is
+/// used only to pick which of our own advertised entries to act on — never
+/// passed through. A payload echoing `amount: "1"` must not become a request
+/// to charge one unit; it matches nothing of ours, or it matches the entry
+/// whose asset it names and that entry's real price is what we verify. The
+/// echo selects, it does not instruct.
+///
+/// v1 carried no asset at all, so there the only honest move is to try each
+/// candidate and let the facilitator say which signature is good.
+export function match(payment: unknown, accepts: PaymentRequirements[]): {
+  version: 1 | 2;
+  candidates: PaymentRequirements[];
+} {
+  const p = payment as { x402Version?: unknown; accepted?: { asset?: unknown } };
+  if (p?.x402Version === 1) return { version: 1, candidates: accepts };
+
+  const asset = String(p?.accepted?.asset ?? "").toLowerCase();
+  const mine = accepts.filter((a) => a.asset.toLowerCase() === asset);
+  // An unrecognised asset leaves the list empty, and an empty list fails
+  // verification rather than falling back to "charge them for something".
+  return { version: 2, candidates: mine };
 }
 
-/// Which of the advertised assets did the payer actually sign for?
+/// Is this signed authorisation good for this price? Nothing has moved yet.
 ///
-/// x402 v1's `X-PAYMENT` carries scheme, network, the signature and the
-/// EIP-3009 authorization — and no asset. The token is only implied by the
-/// EIP-712 domain the signature was made against, which a resource server
-/// cannot read off the payload. (v2's payload does echo the accepted object;
-/// v1's does not, and we are on v1 because that is the version the
-/// facilitator pairs with `network: "celo"`.)
-///
-/// So we ask. Candidates are tried in order and the first that verifies is
-/// the one the payer meant — a wrong-asset signature simply fails to verify,
-/// which is the same answer a forged one gets. Verification moves no money,
-/// so a rejected candidate costs a round trip and nothing else.
-///
-/// The common case is one call: USDC is first because it is what most payers
-/// hold today. If that ordering ever stops being true, reorder `ASSETS`.
-export async function verifyAny(
-  paymentPayload: unknown,
+/// Tries the candidates in order and reports which one verified, because
+/// settlement has to reuse that exact entry: settling against a different one
+/// asks the facilitator to move a token the signature does not authorise.
+export async function verify(
+  payment: unknown,
   accepts: PaymentRequirements[],
+  resource: ResourceInfo,
 ): Promise<{ ok: boolean; reason?: string; payer?: string; matched?: PaymentRequirements }> {
+  const { version, candidates } = match(payment, accepts);
+  if (!candidates.length) {
+    return { ok: false, reason: "that asset is not one this service accepts" };
+  }
+
   let lastReason: string | undefined;
-  for (const candidate of accepts) {
-    const out = await verify(paymentPayload, candidate);
-    if (out.ok) return { ...out, matched: candidate };
-    // Keep the most specific complaint. "insufficient_funds" against the
-    // asset they actually signed for is the useful message; the generic
-    // mismatch from the other candidates is not.
-    lastReason = out.reason ?? lastReason;
+  for (const candidate of candidates) {
+    const out = await facilitator("/verify", {
+      x402Version: version,
+      paymentPayload: payment,
+      paymentRequirements: version === 1 ? asV1(candidate, resource) : candidate,
+    });
+    if (!out) return { ok: false, reason: "payment verification unavailable" };
+    if (out.isValid === true) {
+      return {
+        ok: true,
+        payer: typeof out.payer === "string" ? out.payer : undefined,
+        matched: candidate,
+      };
+    }
+    // Keep the most specific complaint. "insufficient_funds" against the asset
+    // they actually signed for is useful; a mismatch from a candidate they did
+    // not choose is noise.
+    lastReason = typeof out.invalidReason === "string" ? out.invalidReason : lastReason;
   }
   return { ok: false, reason: lastReason };
 }
 
-/// Move the money. Called only after the work succeeded.
+/// Move the money. Called only after the work succeeded, against the entry
+/// that verified.
 export async function settle(
-  paymentPayload: unknown,
-  paymentRequirements: PaymentRequirements,
+  payment: unknown,
+  matched: PaymentRequirements,
+  resource: ResourceInfo,
 ): Promise<{ ok: boolean; txHash?: string }> {
-  const out = await facilitator("/settle", { x402Version: 1, paymentPayload, paymentRequirements });
+  const { version } = match(payment, [matched]);
+  const out = await facilitator("/settle", {
+    x402Version: version,
+    paymentPayload: payment,
+    paymentRequirements: version === 1 ? asV1(matched, resource) : matched,
+  });
   if (!out) return { ok: false };
   return {
     ok: out.success === true,
@@ -234,18 +322,36 @@ export async function settle(
   };
 }
 
-/// `X-PAYMENT` carries base64 JSON.
-export function decodePayment(header: string | null): unknown | null {
-  if (!header) return null;
+/// The payment, from whichever header the client used.
+///
+/// v2 sends `PAYMENT-SIGNATURE`, v1 sent `X-PAYMENT`. Both are base64 JSON,
+/// and the payload itself says which version it is, so the header only has to
+/// be found rather than interpreted.
+export function decodePayment(req: Request): unknown | null {
+  const raw = req.headers.get("payment-signature") ?? req.headers.get("x-payment");
+  if (!raw) return null;
   try {
-    return JSON.parse(atob(header));
+    return JSON.parse(atob(raw));
   } catch {
-    console.error("x402: X-PAYMENT is not base64 JSON");
+    console.error("x402: the payment header is not base64 JSON");
     return null;
   }
 }
 
 /// What the caller gets back so they can find the settlement on-chain.
-export function encodeSettlement(txHash: string | undefined): string {
-  return btoa(JSON.stringify({ success: true, transaction: txHash ?? null, network: NETWORK }));
+///
+/// Under both names: v2 reads `PAYMENT-RESPONSE` and falls back to
+/// `X-PAYMENT-RESPONSE`, and v1 only knows the latter. Sending both costs a
+/// few bytes and means no client has to be the right vintage to get a receipt.
+export function settlementHeaders(txHash: string | undefined): Record<string, string> {
+  const encoded = btoa(JSON.stringify({ success: true, transaction: txHash ?? null, network: NETWORK }));
+  return { "PAYMENT-RESPONSE": encoded, "X-PAYMENT-RESPONSE": encoded };
 }
+
+/// Header names a caller may send us, and the ones they must be allowed to
+/// read back. A browser-side agent that cannot read `PAYMENT-REQUIRED` cannot
+/// discover the price, and CORS hides it by default.
+export const X402_CORS = {
+  "Access-Control-Allow-Headers": "content-type, payment-signature, x-payment",
+  "Access-Control-Expose-Headers": "payment-required, payment-response, x-payment-response",
+};

@@ -46,10 +46,34 @@ curl -X POST https://engaboljiqudghvzmebq.supabase.co/functions/v1/rate-service 
 # 3. sign a USDC transfer authorisation for exactly that, retry with X-PAYMENT.
 ```
 
+**The shortest path is the standard client.** These endpoints speak x402 v2,
+so `@x402/fetch` pays them with no code of ours at all:
+
+```ts
+import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
+
+const client = new x402Client();
+client.setSpendControls({ allowedAssets: [{
+  network: "eip155:42220",
+  asset: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",   // USDC
+  maxAmountPerPayment: "10000",
+}]});
+client.register("eip155:*", new ExactEvmScheme(account, { rpcUrl: "https://forno.celo.org" }));
+const payFetch = wrapFetchWithPayment(fetch, client);
+
+const res = await payFetch("…/functions/v1/rate-service", { method: "POST", body: "{}" });
+```
+
+Note where v2 puts things: the price list arrives in a **`PAYMENT-REQUIRED`
+header** as base64 JSON, not in the body; the payment goes back in
+**`PAYMENT-SIGNATURE`**; the receipt comes in **`PAYMENT-RESPONSE`**. v1's
+body-and-`X-PAYMENT` shape is still accepted, so an older client keeps working
+— both are served by the same response.
+
 The signature is EIP-3009 `TransferWithAuthorization`. Take the EIP-712 domain
-from the 402's `extra` field rather than hardcoding it — the seller states it,
-and a wrong domain makes every signature invalid for reasons the payer cannot
-see.
+from `extra` rather than hardcoding it — the seller states it, and a wrong
+domain makes every signature invalid for reasons the payer cannot see.
 
 **Pay in the currency you hold.** The 402 lists two, same price in each since
 both are 6dp: USDC (`0xcebA9300…118C`, domain `USDC` v2) and USA₮

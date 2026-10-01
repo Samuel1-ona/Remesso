@@ -18,21 +18,21 @@
 /// `verify_jwt = false`: the payment is the authentication.
 import {
   decodePayment,
-  encodeSettlement,
   ASSETS,
-  paymentRequiredBody,
+  paymentRequired,
   priced,
   requirements,
   settle,
-  verifyAny,
+  settlementHeaders,
+  verify,
   X402,
+  X402_CORS,
 } from "../_shared/x402.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type, x-payment",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Expose-Headers": "x-payment-response",
+  ...X402_CORS,
 };
 
 /// A tenth of a cent. Small enough that an agent polling it every minute costs
@@ -71,17 +71,22 @@ Deno.serve(async (req) => {
 
   if (!X402.isConfigured) return json({ error: "this service is not configured to take payment" }, 503);
 
-  const accepts = priced(requirements(resource, "Live NGN rate"), PRICE_UNITS);
+  const accepts = priced(requirements(), PRICE_UNITS);
+  const what = { url: resource, description: "Live NGN rate", mimeType: "application/json" };
 
-  const payment = decodePayment(req.headers.get("x-payment"));
-  if (!payment) return json(paymentRequiredBody(accepts), 402);
+  const payment = decodePayment(req);
+  if (!payment) {
+    const q = paymentRequired(accepts, what);
+    return json(q.body, 402, q.headers);
+  }
 
   // Which asset they paid in is discovered here, and settlement must use the
-  // same one: settling against a different entry would ask the facilitator to
+  // same entry: settling against a different one would ask the facilitator to
   // move a token the signature does not authorise.
-  const check = await verifyAny(payment, accepts);
+  const check = await verify(payment, accepts, what);
   if (!check.ok || !check.matched) {
-    return json(paymentRequiredBody(accepts, check.reason ?? "payment invalid"), 402);
+    const q = paymentRequired(accepts, what, check.reason ?? "payment invalid");
+    return json(q.body, 402, q.headers);
   }
 
   // Fetch before settling. A caller who paid and got nothing is worse than a
@@ -94,7 +99,7 @@ Deno.serve(async (req) => {
     return json({ error: "rates unavailable — you were not charged" }, 503);
   }
 
-  const paid = await settle(payment, check.matched);
+  const paid = await settle(payment, check.matched, what);
   if (!paid.ok) console.error("rate-service: SETTLEMENT FAILED after serving", check.payer);
 
   return new Response(
@@ -104,7 +109,7 @@ Deno.serve(async (req) => {
       headers: {
         ...CORS,
         "Content-Type": "application/json",
-        "X-PAYMENT-RESPONSE": encodeSettlement(paid.txHash),
+        ...settlementHeaders(paid.txHash),
       },
     },
   );
@@ -154,8 +159,8 @@ async function naira(): Promise<Rate[]> {
     });
 }
 
-const json = (b: unknown, status = 200) =>
+const json = (b: unknown, status = 200, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(b, null, 2), {
     status,
-    headers: { ...CORS, "Content-Type": "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", ...extra },
   });

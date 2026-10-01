@@ -274,6 +274,26 @@ allowance of triggers the sender sets, a 60s gap, and every limit they signed.
 The floor is measured on the NET amount: a floor is a rate, and charging it on
 the gross would tighten it by the fee.
 
+**x402 v2 on the wire, v1 still accepted.** Measured 2026-10-01: the official
+`@x402/fetch` 2.28.0, built exactly as Celo's guide documents, refused us with
+*"No client registered for x402 version: 1"*. Every agent reaching for the
+standard SDK — the obvious move — could not pay us at all, and only our own
+hand-written client could, which is why nothing surfaced it.
+
+v2 is not a renamed v1. **The price list travels in a `PAYMENT-REQUIRED`
+header** as base64 JSON and the body is read only when that header is absent;
+the payment comes back in `PAYMENT-SIGNATURE`, the receipt in
+`PAYMENT-RESPONSE`. The requirements object drops `resource`, `description`,
+`mimeType` and `outputSchema` into one `resource` object on the envelope and
+renames `maxAmountRequired` to `amount`. So one response serves both versions:
+v2 in the header, v1 in the body, each client finding its own.
+
+`accepted` in a v2 payload echoes the chosen requirements, which is how the
+seller learns the currency — but it is the PAYER's copy. `match()` uses it only
+to select which of OUR advertised entries to verify against; a payload claiming
+`amount: "1"` selects nothing or selects an entry whose real price we then use.
+The echo selects, it never instructs.
+
 **Two currencies, one price.** `_shared/x402.ts` holds `ASSETS` — USDC and
 USA₮ — and a 402 offers both; the same `maxAmountRequired` is correct for each
 only because both are 6dp. x402 **v1's payload carries no asset**, so the
