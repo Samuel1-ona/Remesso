@@ -18,7 +18,8 @@ npx skills add crackedstudio/Remesso
 | ERC-8004 agent | `9867` on Celo, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 | Proof of human | Self Agent ID `191`, soulbound, zero-knowledge passport proof |
 | Contract | `RemessoExecutorV4` `0x288b7cDD10e069eA64D4984c3E5fa0D9c5816009` (Celo, 42220) |
-| Discovery | `GET https://engaboljiqudghvzmebq.supabase.co/functions/v1/agent` |
+| Start here | `https://remesso-3q67.vercel.app/.well-known/agent.json` |
+| Capabilities | `GET https://engaboljiqudghvzmebq.supabase.co/functions/v1/agent` |
 
 The ERC-8004 metadata is a `data:` URI embedded in the token, not a link to a
 server we control. What is registered cannot be quietly changed afterwards.
