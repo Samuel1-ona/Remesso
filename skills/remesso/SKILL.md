@@ -1,6 +1,6 @@
 ---
 name: remesso
-description: Send, receive and schedule stablecoin payments on Celo as an autonomous agent. Use this when an agent needs to pay for an API in USDC or USA₮ over x402, ask a human or another agent to pay it on a recurring schedule, commit its own wallet to paying someone on a schedule, or bring a scheduled payment forward. Covers the live mainnet endpoints, the contract reads that verify any claim made here, and the decimal and EIP-712 traps that silently cost money on Celo.
+description: Send, receive and schedule stablecoin payments on Celo as an autonomous agent. Use this when an agent needs to pay for an API in USDC, USD₮ or USA₮ over x402, ask a human or another agent to pay it on a recurring schedule, commit its own wallet to paying someone on a schedule, or bring a scheduled payment forward. Covers the live mainnet endpoints, the contract reads that verify any claim made here, and the decimal and EIP-712 traps that silently cost money on Celo.
 license: MIT
 ---
 
@@ -17,7 +17,7 @@ Three things an agent can do, and they are independent:
 | | needs | does not need |
 |---|---|---|
 | **Be paid** by a schedule | an address | gas, a balance, an account, any software |
-| **Pay** for a service | USDC or USA₮ on Celo | CELO — the facilitator pays settlement gas |
+| **Pay** for a service | USDC, USD₮ or USA₮ on Celo | CELO — the facilitator pays settlement gas |
 | **Pay** on a schedule | USDC/USDT/cUSD **and** ~0.06 CELO | — you submit these two transactions yourself |
 
 ## Addresses and endpoints
@@ -82,8 +82,8 @@ including in this file. A plain POST with no payment header returns it for free.
 | `/functions/v1/rate-service` | 0.001 | Live USDT/NGN and USDC/NGN from on-chain RFQ makers |
 | `/functions/v1/trigger-run` | 0.01 | Bring one payment of an existing schedule forward |
 
-Prices are in USDC **or** USA₮ — the same number of base units, because both are
-6dp.
+Prices are in **USDC, USD₮ or USA₮** — the same number of base units in each,
+because all three are 6dp. The 402 lists them; the selector above picks one.
 
 ## Being paid
 
@@ -144,11 +144,13 @@ If an endpoint and the contract disagree, the contract is right.
 - **`extra.name` is not the symbol.** USA₮ signs as `Tether America USD`
   (version `1`), USDT as `Tether USD`. Take the EIP-712 domain from the 402's
   `extra`, never from a symbol.
-- **Match assets by address.** USDT, USDC and USA₮ each have an 18-decimal
+- **Match assets by address.** USD₮, USDC and USA₮ each have an 18-decimal
   fee-currency adapter on Celo reporting the **same `symbol()`** as the real
-  6-decimal token. USA₮'s is `0x0357EE22278c922e1D36cFe6b899269b161880C4`.
-  Pricing against an adapter is an error of 10¹².
-- **Decimals are not uniform.** USDT, USDC and USA₮ are 6dp; cUSD is 18dp.
+  6-decimal token — USA₮'s is `0x0357EE22278c922e1D36cFe6b899269b161880C4`,
+  USD₮'s is `0x0E2A3e05bc9A16F5292A6170456A710cb89C6f72`. Pricing against an
+  adapter is an error of 10¹². USD₮'s symbol is also literally `USD₮`, not
+  `USDT`.
+- **Decimals are not uniform.** USDC, USD₮ and USA₮ are 6dp; cUSD is 18dp.
 - **v2 uses headers, not the body.** The price list arrives in
   `PAYMENT-REQUIRED`, the payment goes back in `PAYMENT-SIGNATURE`, the receipt
   comes in `PAYMENT-RESPONSE`. v1's body-and-`X-PAYMENT` shape is still
