@@ -273,10 +273,10 @@ export async function verify(
   payment: unknown,
   accepts: PaymentRequirements[],
   resource: ResourceInfo,
-): Promise<{ ok: boolean; reason?: string; payer?: string; matched?: PaymentRequirements }> {
+): Promise<{ ok: boolean; reason?: string; payer?: string; matched?: PaymentRequirements; version: 1 | 2 }> {
   const { version, candidates } = match(payment, accepts);
   if (!candidates.length) {
-    return { ok: false, reason: "that asset is not one this service accepts" };
+    return { ok: false, version, reason: "that asset is not one this service accepts" };
   }
 
   let lastReason: string | undefined;
@@ -286,10 +286,11 @@ export async function verify(
       paymentPayload: payment,
       paymentRequirements: version === 1 ? asV1(candidate, resource) : candidate,
     });
-    if (!out) return { ok: false, reason: "payment verification unavailable" };
+    if (!out) return { ok: false, version, reason: "payment verification unavailable" };
     if (out.isValid === true) {
       return {
         ok: true,
+        version,
         payer: typeof out.payer === "string" ? out.payer : undefined,
         matched: candidate,
       };
@@ -299,7 +300,7 @@ export async function verify(
     // not choose is noise.
     lastReason = typeof out.invalidReason === "string" ? out.invalidReason : lastReason;
   }
-  return { ok: false, reason: lastReason };
+  return { ok: false, version, reason: lastReason };
 }
 
 /// Move the money. Called only after the work succeeded, against the entry
@@ -343,8 +344,20 @@ export function decodePayment(req: Request): unknown | null {
 /// Under both names: v2 reads `PAYMENT-RESPONSE` and falls back to
 /// `X-PAYMENT-RESPONSE`, and v1 only knows the latter. Sending both costs a
 /// few bytes and means no client has to be the right vintage to get a receipt.
-export function settlementHeaders(txHash: string | undefined): Record<string, string> {
-  const encoded = btoa(JSON.stringify({ success: true, transaction: txHash ?? null, network: NETWORK }));
+/// `version` is the payer's, not ours. A v1 client was promised `network:
+/// "celo"` and may check it; handing it the CAIP-2 name because our own
+/// default changed is us renaming the chain under a client that never asked
+/// for v2. One response, two vocabularies — the receipt speaks whichever the
+/// payment did.
+export function settlementHeaders(
+  txHash: string | undefined,
+  version: 1 | 2,
+): Record<string, string> {
+  const encoded = btoa(JSON.stringify({
+    success: true,
+    transaction: txHash ?? null,
+    network: version === 1 ? NETWORK_V1 : NETWORK,
+  }));
   return { "PAYMENT-RESPONSE": encoded, "X-PAYMENT-RESPONSE": encoded };
 }
 

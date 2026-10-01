@@ -411,8 +411,9 @@ adopts it and the chain-discovered schedules follow it in.
 Limits worth knowing before promising anything: `MIN_TRIGGER_GAP` is 60s, so
 this is per-minute granularity rather than per-call streaming, and gas sets the
 floor. Measured on our own transactions 2026-09-28, not taken from a published
-figure: a run is ~91,875 gas, an x402 settlement ~85,842 in USDC and ~104,692 in USA₮
-(22% more — TetherToken does more work than FiatTokenV2), and createSchedule
+figure: a run is ~91,875 gas, an x402 settlement ~85,842 in USDC and ~87,500 in USA₮ (the
+first USA₮ payment to a fresh recipient measured 104,692 — a cold balance slot,
+not the steady-state cost; do not quote that one), and createSchedule
 ~224,396 — at 202 gwei with CELO near $0.09 that is ~$0.0017, ~$0.0016 and
 ~$0.004. A one-cent payment therefore loses ~17% to gas. Re-measure before
 quoting; the number moves with the gas price and with CELO.

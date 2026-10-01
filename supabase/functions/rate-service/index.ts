@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
       headers: {
         ...CORS,
         "Content-Type": "application/json",
-        ...settlementHeaders(paid.txHash),
+        ...settlementHeaders(paid.txHash, check.version),
       },
     },
   );

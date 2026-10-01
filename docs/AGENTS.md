@@ -53,10 +53,17 @@ so `@x402/fetch` pays them with no code of ours at all:
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 
-const client = new x402Client();
+const USAT = "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771";
+
+// The SELECTOR is what picks the currency. Without it the SDK takes the first
+// entry in `accepts`, and Celo USDC is a built-in default asset that is always
+// allowed — so a wallet holding both pays in USDC while its owner believes the
+// `allowedAssets` line below chose otherwise. `allowedAssets` is a ceiling on
+// what may be spent, not a choice of what to spend.
+const client = new x402Client((_v, reqs) => reqs.find((r) => r.asset === USAT) ?? reqs[0]);
 client.setSpendControls({ allowedAssets: [{
   network: "eip155:42220",
-  asset: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",   // USDC
+  asset: USAT,
   maxAmountPerPayment: "10000",
 }]});
 client.register("eip155:*", new ExactEvmScheme(account, { rpcUrl: "https://forno.celo.org" }));
@@ -214,8 +221,10 @@ weekly upwards, but a schedule can be created at any interval, and live ones
 run hourly and every five minutes.) And gas is the real floor — **measured on our own transactions**, not
 taken from a published figure: a payment costs ~91,875 gas, which at 202 gwei
 and CELO near $0.09 is about **$0.0017**, and creating a schedule is ~224,000
-gas (~$0.004). An x402 settlement is ~85,800 gas in USDC and ~104,700 in USA₮
-(~22% more, measured on both) — the facilitator pays that one, not you. So a one-cent payment loses roughly 17% to gas, and a payment of
+gas (~$0.004). An x402 settlement is ~85,800 gas in USDC and ~87,500 in USA₮ — the
+facilitator pays that one, not you. A first payment to a recipient that holds
+none of that token yet costs more (one measured at ~104,700), because the
+first write to a fresh balance slot is the expensive one. So a one-cent payment loses roughly 17% to gas, and a payment of
 a few cents is the honest floor. Sub-cent streaming is payment channels, and
 none of this is that.
 
