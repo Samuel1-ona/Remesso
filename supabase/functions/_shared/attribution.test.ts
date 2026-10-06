@@ -16,6 +16,28 @@ Deno.test("matches the SDK byte for byte", () => {
     suffixFor("celo_test1234"),
     "0x63656c6f5f74657374313233340d0080218021802180218021802180218021",
   );
+  // The code Loops issued for Agents on Open Rails, alone — equal to the
+  // `celo.dataSuffix` that `loops project get` returns for the entry.
+  assertEquals(
+    suffixFor("celo_5cd35ca55baf"),
+    "0x63656c6f5f356364333563613535626166110080218021802180218021802180218021",
+  );
+});
+
+Deno.test("carries several codes the way the SDK does", () => {
+  // `toDataSuffix(["remesso", "celo_5cd35ca55baf"])` from 0.5.0, which
+  // `fromDataSuffix` decodes back to both codes. This is what every Remesso
+  // transaction carries during the hackathon.
+  assertEquals(
+    suffixFor(["remesso", "celo_5cd35ca55baf"]),
+    "0x72656d6573736f2c63656c6f5f356364333563613535626166190080218021802180218021802180218021",
+  );
+  assertEquals(suffixFor([]), undefined);
+  assertEquals(
+    suffixFor(["remesso", "Bad"]),
+    suffixFor("remesso"),
+    "a bad code is dropped, not allowed to untag the rest",
+  );
 });
 
 Deno.test("carries the marker and schema the indexer looks for", () => {

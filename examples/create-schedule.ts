@@ -128,7 +128,15 @@ if (total > maxTotal) {
 }
 
 const publicClient = createPublicClient({ chain: celo, transport: http(RPC) });
-const wallet = createWalletClient({ account, chain: celo, transport: http(RPC) });
+// ERC-8021 attribution, after the calldata where the EVM ignores it: Remesso's
+// own code plus the one Loops issued for Agents on Open Rails. It credits the
+// app that caused the transaction and changes nothing about what it does —
+// the same suffix the Remesso web app puts on every write a sender signs.
+// Byte-identical to `toDataSuffix(["remesso", "celo_5cd35ca55baf"])` from
+// `@celo/attribution-tags`, pinned in `_shared/attribution.test.ts`.
+const ATTRIBUTION =
+  "0x72656d6573736f2c63656c6f5f356364333563613535626166190080218021802180218021802180218021";
+const wallet = createWalletClient({ account, chain: celo, transport: http(RPC), dataSuffix: ATTRIBUTION });
 const read = (functionName: string, args: unknown[], address = token.address) =>
   publicClient.readContract({ address, abi, functionName, args } as never);
 

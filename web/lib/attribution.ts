@@ -13,7 +13,16 @@ import type { Hex } from "viem";
 /// The same fixed code the executor uses (`_shared/attribution.ts`), not the
 /// SDK's hostname-derived one: one app should have one code, and a hostname
 /// code would change when this moves off ngrok onto a real domain.
-const CODE = (process.env.NEXT_PUBLIC_ATTRIBUTION_CODE ?? "remesso").toLowerCase();
+///
+/// Comma-separated, like the backend's: `remesso` for the app's own history,
+/// plus `celo_5cd35ca55baf`, the code Loops issued for Agents on Open Rails —
+/// the hackathon credits only that one. The SDK writes a list as one Schema 0
+/// suffix that `verifyTx` reads back as both codes.
+const CODES = (process.env.NEXT_PUBLIC_ATTRIBUTION_CODE ?? "remesso,celo_5cd35ca55baf")
+  .toLowerCase()
+  .split(",")
+  .map((c) => c.trim())
+  .filter(Boolean);
 
 let cached: Hex | null | undefined;
 
@@ -22,7 +31,7 @@ let cached: Hex | null | undefined;
 export function attributionSuffix(): Hex | undefined {
   if (cached !== undefined) return cached ?? undefined;
   try {
-    cached = toDataSuffix(CODE) as Hex;
+    cached = toDataSuffix(CODES) as Hex;
   } catch (e) {
     console.error("attribution suffix unavailable:", (e as Error).message);
     cached = null;

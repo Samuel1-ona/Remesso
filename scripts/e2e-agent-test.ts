@@ -21,6 +21,7 @@ import {
 } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
+import { attributionSuffix } from "../supabase/functions/_shared/attribution.ts";
 
 // ---------------------------------------------------------------------------
 const env: Record<string, string> = {};
@@ -44,7 +45,12 @@ const PK = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as `0x${string}`;
 
 const account = privateKeyToAccount(PK);
 const pub = createPublicClient({ chain: celo, transport: http(RPC) });
-const wallet = createWalletClient({ account, chain: celo, transport: http(RPC) });
+// Tagged like every other Remesso transaction: an untagged mainnet write can
+// never be attributed afterwards, and this suite sends real ones.
+const wallet = createWalletClient({
+  account, chain: celo, transport: http(RPC),
+  ...(attributionSuffix ? { dataSuffix: attributionSuffix } : {}),
+});
 
 /// Schedules that existed before the suite started. Never touched — the live
 /// schedule #1 belongs to the operator, not to this test.
