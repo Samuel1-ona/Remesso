@@ -8,7 +8,10 @@ one holds the sender's keys, and no one can move their money outside the
 envelope they signed: the contract enforces it, not our code.
 
 Today it pays in **stablecoins** — the recipient receives USDT, USDC or cUSD,
-the assets MiniPay actually displays. The naira rails (cNGN to a wallet, or
+the assets MiniPay actually displays — and, since 2026-10-06, in **pesos and
+reais**: Ripio's wARS, wBRL and wCOP, so a remittance to Argentina, Brazil or
+Colombia never has to pass through the dollar (see
+[Local currencies](#local-currencies-pesos-and-reais)). The naira rails (cNGN to a wallet, or
 through the cNGN API to a Nigerian bank account) are built and tested but
 **switched off in the UI** pending the regulatory work described under
 [Open items](#open-items). Everything about them below still holds; nothing
@@ -45,7 +48,7 @@ and its API does the thing Moove's cannot: `redeemAsset` burns cNGN and pays
 naira to an arbitrary bank account.
 
 Everything below was verified on-chain and against live docs, most recently
-2026-09-22.
+2026-10-06.
 
 | | |
 |---|---|
@@ -53,10 +56,11 @@ Everything below was verified on-chain and against live docs, most recently
 | RemessoExecutorV3 | `0xd2e68acd875fb1b3a98dc0d72659910b05e7e08f` — superseded 2026-09-22; its schedules remain on-chain and cannot run again |
 | RemessoExecutorV2 | `0x218414aD37206fd4cFD6C47947574708DB0e95D2` — superseded |
 | RemessoExecutor V1 | `0xC7eF75fC6283aB3b810fa4dE270F074C47761189` — retired, has known defects |
-| ERC-8004 agent | `9867`, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` — metadata is a `data:` URI in the token, so it cannot be changed after the fact |
+| ERC-8004 agent | `9879`, held by the executor `0x3c754AD31e802D5fA65487f460dED65Aba749Cd1` — the wallet that sends the agent's transactions. `9867` is the same identity held by the cold owner. Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`; metadata is a `data:` URI in the token, so it cannot be changed after the fact |
 | Self Agent ID | token `191`, agent `0x5C3EBb0084233156ba51a5C2dfD42d88d5a74CA6`, registry `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` |
 | cNGN (Celo mainnet) | `0xF6829D7393dAe24509eb1E52eE8e572e2E271a4f` — **6 decimals** |
 | USDT / USDC / cUSD | `0x48065fbbe…483d5e` 6dp · `0xcebA9300f…C6f33A8B32118C` 6dp · `0x765DE8168…8B1282a` **18dp** |
+| wARS / wBRL / wCOP (Ripio) | `0x0DC4F928…129D90D` · `0xD76f5Faf…E4390e0` · `0x8a1D45e1…91e2D76` — all **18dp**, allowed on V4 2026-10-06 |
 | Uniswap SwapRouter02 | `0x5615CDAb10dc425a742d643d949a7F474C01abc4` |
 | cNGN/USDT pool | `0x6519d56eb0a69fc0338657784c783b169b8f7d32` — 0.01% tier |
 
@@ -89,7 +93,7 @@ createSchedule() ┴──▶ schedules ◀── pg_cron (every minute)
                         runs ──▶ history ◀── Goldsky subgraph
                                                 (seconds, not polls)
 
-An agent ──▶ POST /trigger-run ──▶ 402 ──▶ signed USDC ──▶ runNow()  [V4]
+An agent ──▶ POST /trigger-run ──▶ 402 ──▶ signed USDC/USD₮/USA₮ ──▶ runNow()  [V4]
                                             ▲
                                     x402 facilitator settles, pays gas
 ```
@@ -131,7 +135,8 @@ point is the failure mode this schema is shaped to prevent.
 
 ## V4: what changed
 
-Deployed 2026-09-22, **unaudited**, and not yet carrying any schedule. Three
+Deployed 2026-09-22, **unaudited**, and the contract the app and the executor
+use. Three
 additions, each *pinned into the schedule at consent* so no later owner action
 can reach a remittance somebody already signed:
 
@@ -149,11 +154,42 @@ can reach a remittance somebody already signed:
 twice: the owner changes a setting, and a schedule already authorised does not
 move.
 
+## Local currencies: pesos and reais
+
+Across Latin America, sending money home usually means converting through the
+dollar first, with a fee at each step. Ripio's **wFIAT** — wARS, wBRL, wCOP,
+ERC-20s backed 1:1 by local currency — let a schedule skip that: the sender
+funds in pesos or reais and the recipient receives exactly that, on the Direct
+rail, with nothing converted.
+
+No redeploy was needed. V4's Direct allowlist is the one owner lever that adds a
+corridor without touching a signed schedule, and the owner called
+`setDirectToken` for each on 2026-10-06
+([wARS](https://celoscan.io/tx/0x717cc22cb23d14f0dee694703b4b67043051d5c854cba1f66178db1d715da3c9),
+[wBRL](https://celoscan.io/tx/0x482172a7196f26f4e0b6a0285f305b1c10cacbeb12c7f378285998f33119a2ce),
+[wCOP](https://celoscan.io/tx/0xbed93797508c95a556918ff6132ad6d44536155d50f6401a7b0b7b2aa4d60a85)).
+Before that, the same schedules were rehearsed on a mainnet fork: refused with
+`TokenNotAllowed` first, then 50,000 wARS delivered as 49,875 after the 25bps
+commission.
+
+**A peso is not a dollar**, and code written for three dollar stablecoins
+quietly assumed it was. The backend's per-run cap was a dollar figure applied in
+each token's own units — 1,000 meant 1,000 pesos — so it now scales by a
+per-currency rate rounded *down*, which a stale rate or a falling peso can only
+make stricter. An asset the backend does not know is refused rather than
+assumed 6dp. The balance total and the unusual-schedule check count dollar
+tokens only.
+
+What a new schedule may use is read from the contract (`directTokenAllowed`),
+not from our token lists — the form's picker and `/agent` both do — so a token
+is never offered before the contract takes it. MiniPay shows none of the wFIAT;
+the form says the recipient needs a wallet that does.
+
 ## Being callable
 
 `trigger-run` sells one early send over **x402**. An agent POSTs a schedule id,
-gets a `402` carrying the exact price, retries with a signed USDC authorisation,
-and one run fires ahead of its cadence. No account and no API key — the payment
+gets a `402` carrying the exact price, retries with a signed USDC, USD₮ or USA₮
+authorisation, and one run fires ahead of its cadence. No account and no API key — the payment
 is the authentication, which is why `verify_jwt = false` on that function.
 
 The caller buys **timing and nothing else**. Destination, amount, asset, floor,
@@ -220,7 +256,7 @@ page to hand someone pointing an agent at this.
 
 | To be paid | To pay |
 |---|---|
-| An address. That is all — the payer names it. | USDC on Celo. No CELO: EIP-3009 means the facilitator pays gas. |
+| An address. That is all — the payer names it. | USDC, USD₮ or USA₮ on Celo. No CELO: EIP-3009 means the facilitator pays gas. |
 | To collect early: a grant, plus gas — or a cent for `trigger-run`. | An x402 client. `scripts/agent-pay.ts` is ~40 lines. |
 | Nothing to install, no key shared with us. | `GET /functions/v1/agent` to discover; the 402 is the quote. |
 
@@ -245,7 +281,9 @@ Two separate things, both optional to the money path:
 - **Remesso itself** is registered as a Self Agent ID (token `191`), soulbound
   to the cold owner wallet. That is what makes the agent sybil-resistant rather
   than an anonymous key, and it is the Work-tier requirement for Celo's Agent
-  Visa.
+  Visa. Its ERC-8004 identity is agent `9879`, held by the executor — the
+  wallet that actually sends the agent's transactions — with `9867` as the same
+  record held by the cold owner.
 
 MiniPay cannot open the Self app directly — its webview blocks the handoff and
 falls through to the App Store, losing the request. The app therefore asks the
@@ -273,6 +311,13 @@ Every transaction Remesso causes carries the Celo attribution suffix
 signs. Celo's reward distribution reads this data and **untagged transactions
 cannot be claimed retroactively**. First tagged transaction: 2026-09-22.
 
+During the **Agents on Open Rails** hackathon (to 2026-11-09) every
+transaction also carries `celo_5cd35ca55baf`, the code Loops issued to this
+entry. Both ride in one Schema 0 suffix — `ATTRIBUTION_CODE` and
+`NEXT_PUBLIC_ATTRIBUTION_CODE` are comma-separated — and the encoder is pinned
+byte for byte to `@celo/attribution-tags`. Dropping the event code afterwards
+is an env change.
+
 ## The indexer
 
 A Goldsky instant subgraph over the executor gives the UI a run within seconds
@@ -288,14 +333,21 @@ indexer/            Goldsky instant subgraph over the executor (see its README).
 scripts/
   check-env.ts      Is .env complete and coherent? Proves the SSH key.
   x402-buy.ts       The buyer half of trigger-run: quote, sign, pay, call.
+  agent-pay.ts      Remesso paying someone else's x402 service, by hand.
   e2e-agent-test.ts Local end-to-end run against a funded test wallet.
+examples/           An agent paying Remesso, or signing a schedule itself.
+skills/remesso/     SKILL.md — the integration guide an agent loads.
 supabase/
   migrations/       Schema, RLS, pg_cron triggers.
   functions/
     _shared/        Config, cNGN client, Celo/viem, Self, Jev, x402,
                     attribution, failure classification — with tests.
     execute-due-runs/       The executor loop.
+    sync-schedules/         Adopts schedules created without the app.
     trigger-run/            Paid early send over x402 (no JWT; payment is auth).
+    rate-service/           Live NGN rates over x402, a tenth of a cent.
+    agent/                  The public capability document.
+    request-payment/        "Pay me here" — prefills a payer's form, moves nothing.
     self-verify/            Starts an identity check, reports where it stands.
     self-webhook/           Self results (Svix-signed; retries, unlike cNGN).
     ai-assist/              Draft a schedule; classify a failure; score a risk.
@@ -583,8 +635,7 @@ List blocks everything rather than allowing everything.
   approves it. Audit before migrating anyone.
 - **The V3 → V4 migration is half done.** The app and the executor are on V4 as
   of 2026-09-22; the schedules authorised against V3 are not, and cannot be —
-  each sender must approve the new address and re-create. No V4 schedule has
-  been created through the app yet.
+  each sender must approve the new address and re-create.
 - ~~**BANK PAYOUTS CANNOT WORK ON THE DEPLOYED CONTRACT.**~~ **Fixed in V2 and
   deployed in V3.** The original defect, found in the 2026-09-14 review: cNGN
   only burns when `isExternalSenderWhitelisted(msg.sender)`, and a Uniswap swap
@@ -608,9 +659,10 @@ List blocks everything rather than allowing everything.
 - **Sender identity is a claim, not a proof.** MiniPay does not support message
   signing, so SIWE is unavailable and the app binds a wallet to an anonymous
   Supabase session. This does not weaken the money path — the contract checks
-  `msg.sender`, and nothing in the database can move funds — but
-  `senders.wallet_address` is first-come, so an address can be squatted. Self
-  verification proves a *human*, not wallet ownership; it does not close this.
+  `msg.sender`, and nothing in the database can move funds. Since 2026-09-24 the
+  claim is last-writer-wins (`claim_sender`), which grants a view of a schedule
+  list and never the ability to move money. Self verification proves a
+  *human*, not wallet ownership; it does not close this.
 - **The `remesso` attribution code is not yet credited** on Celo's dashboard.
   Tagging works regardless; crediting is a registry step with the Celo team.
 - Recipient notifications — one seam left in `balance-poller`.
