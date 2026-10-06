@@ -19,7 +19,13 @@ const EMITTED: Array<[string, string, string]> = [
   ["not due on-chain", "not_due", "execute-due-runs prepare()"],
   ["sender funding wallet is short", "wallet_short", "execute-due-runs prepare()"],
   ["sender allowance revoked or too low", "allowance_short", "execute-due-runs prepare()"],
-  ["amount exceeds backend cap of 1000", "over_cap", "execute-due-runs prepare()"],
+  ["amount exceeds backend cap of 1000 USDT", "over_cap", "execute-due-runs prepare()"],
+  ["amount exceeds backend cap of 1500000 wARS", "over_cap", "execute-due-runs prepare()"],
+  [
+    "funding asset 0xabc is not in the backend token list",
+    "other",
+    "execute-due-runs prepare()",
+  ],
   ["pool impact 172bps exceeds limit", "pool_thin", "execute-due-runs prepare()"],
   [
     "swap output 400000 is below cNGN's 1 naira minimum",

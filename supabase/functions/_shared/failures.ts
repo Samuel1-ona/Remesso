@@ -38,6 +38,7 @@ export const RULES: Array<[RegExp, string]> = [
   [/funding wallet is short|insufficient balance/i, "wallet_short"],
   [/allowance revoked or too low|allowance/i, "allowance_short"],
   [/exceeds backend cap/i, "over_cap"],
+  [/not in the backend token list/i, "other"],
   [/pool impact|exceeds limit/i, "pool_thin"],
   [/floor|minRate|rate too low/i, "floor_not_met"],
   [/below cNGN's 1 naira minimum|naira minimum/i, "below_min_naira"],

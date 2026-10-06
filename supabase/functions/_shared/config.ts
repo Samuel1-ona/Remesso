@@ -21,13 +21,38 @@ export const CELO = {
 ///
 /// The contract's own allowlist is the authority — this list only lets an
 /// endpoint say "USDT" and mean an address, and reject a symbol nothing here
-/// can pay. Decimals are not uniform (cUSD is 18dp) and are never assumed.
-/// Mirrors `web/lib/config.ts`; three entries that change about once a year.
+/// can pay. Decimals are not uniform (cUSD and every wFIAT are 18dp) and are
+/// never assumed. Mirrors `web/lib/config.ts`.
+///
+/// `unitsPerUsd` scales the backend's dollar cap into each token's own units.
+/// For the dollar stablecoins it is 1. For Ripio's wFIAT it is a rough rate,
+/// rounded DOWN from the market on 2026-10-06 (Textile: USD→ARS 1,597,
+/// USD→BRL 4.98; open.er-api: USD→COP 3,286). Rounding down and letting the
+/// peso fall both make the cap stricter in dollar terms, so a stale number
+/// errs toward refusing a run, never toward allowing a bigger one. It is a
+/// backstop on the on-chain envelope, not a price anything is paid at.
+///
+/// wARS, wBRL and wCOP are the three wFIAT Celo's x402 facilitator lists
+/// (`/supported`, 2026-10-06), verified on-chain the same day: 18dp, proxies.
+/// A schedule in one only exists once the owner has called
+/// `setDirectToken(token, true)` on V4 — until then `createSchedule` reverts
+/// with TokenNotAllowed and this entry simply names a token nobody can use.
 export const DIRECT_TOKENS = [
-  { symbol: "USDT", address: "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e", decimals: 6 },
-  { symbol: "USDC", address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6 },
-  { symbol: "cUSD", address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18 },
+  { symbol: "USDT", address: "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e", decimals: 6, unitsPerUsd: 1 },
+  { symbol: "USDC", address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6, unitsPerUsd: 1 },
+  { symbol: "cUSD", address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18, unitsPerUsd: 1 },
+  { symbol: "wARS", address: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D", decimals: 18, unitsPerUsd: 1500 },
+  { symbol: "wBRL", address: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0", decimals: 18, unitsPerUsd: 5 },
+  { symbol: "wCOP", address: "0x8a1D45e102e886510e891d2Ec656a708991e2D76", decimals: 18, unitsPerUsd: 3200 },
 ] as const;
+
+export type DirectToken = (typeof DIRECT_TOKENS)[number];
+
+/// The table entry for an address, or `undefined` for one we do not know.
+export function directToken(address: string | null | undefined): DirectToken | undefined {
+  const a = (address ?? "").toLowerCase();
+  return DIRECT_TOKENS.find((t) => t.address.toLowerCase() === a);
+}
 
 /// Read lazily rather than snapshotted at import time. Eager reads capture
 /// whatever the environment held the instant the module graph was evaluated,

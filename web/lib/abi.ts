@@ -113,6 +113,13 @@ export const executorAbi = [
   },
   {
     type: "function",
+    name: "directTokenAllowed",
+    stateMutability: "view",
+    inputs: [{ name: "token", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
     name: "schedulesOf",
     stateMutability: "view",
     inputs: [{ name: "sender", type: "address" }],

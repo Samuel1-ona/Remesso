@@ -582,7 +582,9 @@ function Review({
       </dl>
 
       <UnusualCheck
-        amountUsd={amountIn ? Number(formatUnits(amountIn, token.decimals)) : null}
+        // Only a dollar token's amount is a dollar amount. For wFIAT the
+        // check stays silent rather than judge pesos on a dollar scale.
+        amountUsd={amountIn && token.currency === "USD" ? Number(formatUnits(amountIn, token.decimals)) : null}
         recipientAddress={recipient.payoutType === "ngn_bank" ? null : recipient.walletAddress}
         accountNumber={recipient.payoutType === "ngn_bank" ? recipient.accountNumber : null}
         howOften={intervalName(terms.intervalSeconds)}
@@ -622,7 +624,7 @@ function Review({
 /// name still attached, so a new error is never silently swallowed.
 const CONTRACT_ERRORS: Record<string, string> = {
   TokenNotAllowed:
-    "That asset is not enabled for direct transfers. Choose USDT, USDC or cUSD.",
+    "That asset is not enabled for direct transfers. Choose one of the assets offered.",
   WrongTokenForPayoutType:
     "Converted payouts are funded in USDT only. Either fund this schedule with USDT, or switch the recipient to a direct transfer to send USDC or cUSD as-is.",
   ScheduleExpired: "Pick an expiry date in the future.",

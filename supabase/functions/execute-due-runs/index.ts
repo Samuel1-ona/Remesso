@@ -21,7 +21,7 @@
 /// is rejected. Batching them into a single transaction is the way past that,
 /// and it needs a batcher contract set via setExecutor — see README.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { CELO, LIMITS, requireEnv } from "../_shared/config.ts";
+import { CELO, directToken, LIMITS, requireEnv } from "../_shared/config.ts";
 import {
   executeRun,
   getSchedule,
@@ -59,15 +59,6 @@ type DueSchedule = {
   token_address: string | null;
 };
 
-/// Decimals by token. Not uniform: USDT and USDC are 6dp, cUSD is 18dp. The
-/// backend cap below is in whole units, so applying it without the right scale
-/// is wrong by 10^12 for cUSD.
-const DECIMALS: Record<string, number> = {
-  "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e": 6, // USDT
-  "0xceba9300f2b948710d2653dd7b07f33a8b32118c": 6, // USDC
-  "0x765de816845861e75a25fca122bb6898b8b1282a": 18, // cUSD
-};
-const decimalsFor = (a: string | null) => DECIMALS[(a ?? "").toLowerCase()] ?? 6;
 
 type Prepared = {
   s: DueSchedule;
@@ -217,10 +208,19 @@ async function prepare(
     if (!r.approved) return await fail("sender allowance revoked or too low", "skipped");
 
     // 2. Backstop the on-chain envelope with our own ceiling, at the funding
-    //    asset's own scale.
-    const scale = 10n ** BigInt(decimalsFor(s.token_address));
-    if (amountIn > BigInt(LIMITS.maxRunAmountUsdt) * scale) {
-      return await fail(`amount exceeds backend cap of ${LIMITS.maxRunAmountUsdt}`);
+    //    asset's own scale and in its own currency. An asset missing from the
+    //    table is refused rather than assumed 6dp: the old fallback would have
+    //    read an 18dp wARS amount as 10^12 times smaller and waved through any
+    //    size at all. Funding assets are all in `DIRECT_TOKENS` (the swap rails
+    //    fund in USDT, which is), so this only fires if the contract's
+    //    allowlist gained a token this table never heard of.
+    const asset = directToken(s.token_address ?? CELO.usdt);
+    if (!asset) {
+      return await fail(`funding asset ${s.token_address} is not in the backend token list`);
+    }
+    const cap = BigInt(LIMITS.maxRunAmountUsdt) * BigInt(asset.unitsPerUsd);
+    if (amountIn > cap * 10n ** BigInt(asset.decimals)) {
+      return await fail(`amount exceeds backend cap of ${cap} ${asset.symbol}`);
     }
 
     // 3. A Direct run converts nothing: same asset in and out. There is no

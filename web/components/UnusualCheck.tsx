@@ -33,10 +33,12 @@ export function UnusualCheck({
 
   // Dollar amounts across assets are comparable at 1:1 — USDT, USDC and cUSD
   // are all dollar stablecoins, which is the same assumption the balance strip
-  // already makes.
-  const previous = (schedules ?? []).map((s) => {
+  // already makes. wFIAT schedules are left out: 50,000 wARS read as $50,000
+  // would make every dollar amount after it look small.
+  const previous = (schedules ?? []).flatMap((s) => {
     const t = tokenFor(s.token_address);
-    return Number(BigInt(s.amount_in) / 10n ** BigInt(t.decimals - 2)) / 100;
+    if (t.currency !== "USD") return [];
+    return [Number(BigInt(s.amount_in) / 10n ** BigInt(t.decimals - 2)) / 100];
   });
 
   const paidBefore = (schedules ?? []).some((s) => {

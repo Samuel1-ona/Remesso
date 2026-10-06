@@ -13,7 +13,7 @@
 import { CELO, DIRECT_TOKENS, SELF_API } from "../_shared/config.ts";
 import { ATTRIBUTION_CODE } from "../_shared/attribution.ts";
 import { ASSETS, X402 } from "../_shared/x402.ts";
-import { executorAccount, executorV4 } from "../_shared/celo.ts";
+import { allowedDirectTokens, executorAccount, executorV4 } from "../_shared/celo.ts";
 import { CNGN_RAILS_ENABLED } from "../_shared/rails.ts";
 
 const CORS = {
@@ -38,11 +38,20 @@ function triggerAddress(): string | undefined {
   }
 }
 
-Deno.serve((req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "GET") {
     return json({ error: "method not allowed" }, 405);
   }
+
+  // What a payer can actually use, from the contract's allowlist — not every
+  // asset we know how to handle. A token this document names but the contract
+  // refuses is a schedule that reverts at signing, after an agent has built
+  // for it. If the read fails, the three dollar stablecoins: allowed since
+  // deploy, so the fallback can understate the list but never overstate it.
+  const assets = (await allowedDirectTokens()) ??
+    DIRECT_TOKENS.filter((t) => t.unitsPerUsd === 1);
+  const symbols = assets.map((t) => t.symbol);
 
   return json({
     name: "Remesso",
@@ -93,7 +102,7 @@ Deno.serve((req) => {
     receiving: {
       needs: ["an address on Celo"],
       doesNotNeed: ["gas", "a token balance", "an account with us", "our software"],
-      assets: DIRECT_TOKENS.map((t) => t.symbol),
+      assets: symbols,
       /// Four ways to get an address to a payer, easiest first. They differ
       /// only in who does the typing.
       howToHandOverYourAddress: [
@@ -169,7 +178,7 @@ Deno.serve((req) => {
           payer: "the wallet address you are asking",
           to: "the address you want paid",
           amount: "optional, e.g. \"5\"",
-          token: "optional: USDT, USDC or cUSD",
+          token: `optional: ${symbols.join(", ")}`,
           every: "optional: week | fortnight | month | quarter",
           runs: "optional: how many payments",
           from: "optional: who is asking",

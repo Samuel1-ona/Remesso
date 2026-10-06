@@ -64,7 +64,12 @@ export default function SchedulesPage() {
         {/* One row per asset the sender can fund with. Tapping one changes
             which allowance is quoted below; the total above never changes. */}
         <div className="mt-4 flex gap-2" role="tablist" aria-label="Asset">
-          {balances.map(({ token: t, balance }) => {
+          {/* wFIAT only when held: six tiles do not fit a phone, and a MiniPay
+              sender — who can hold none of them — should not see three
+              permanent zeroes. */}
+          {balances
+            .filter(({ token: t, balance }) => t.currency === "USD" || (balance ?? 0n) > 0n)
+            .map(({ token: t, balance }) => {
             const on = t.symbol === token.symbol;
             return (
               <button

@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
 import { attributionSuffix } from "./attribution.ts";
-import { CELO, LIMITS } from "./config.ts";
+import { CELO, DIRECT_TOKENS, type DirectToken, LIMITS } from "./config.ts";
 
 export const publicClient = createPublicClient({
   chain: celo,
@@ -53,11 +53,37 @@ export const executorV4Abi = parseAbi([
   "function triggerability(uint256 id, address caller) view returns (bool canTrigger, uint16 triggersLeft, uint64 earliestTrigger)",
   "function nextScheduleId() view returns (uint256)",
   "function runnability(uint256 id) view returns (bool due, bool funded, bool approved, uint256 floor, uint64 nextRunAt)",
+  "function directTokenAllowed(address token) view returns (bool)",
 ]);
 
 /// The V4 deployment. Empty until the migration; `trigger-run` is the only
 /// thing that reads it, and it answers 503 rather than guessing.
 export const executorV4 = (Deno.env.get("REMESSO_EXECUTOR_V4_ADDRESS") ?? "") as `0x${string}` | "";
+
+/// The Direct assets V4 will accept right now, read from its allowlist.
+///
+/// `DIRECT_TOKENS` names every asset we know how to handle; the contract
+/// decides which a schedule may use, and the owner can widen that at any
+/// time with `setDirectToken`. Anything that tells an outside caller what it
+/// can pay in reads this, so a token is never advertised before the contract
+/// takes it. `null` when the read fails — the caller chooses its fallback.
+export async function allowedDirectTokens(): Promise<DirectToken[] | null> {
+  if (!executorV4) return null;
+  try {
+    const results = await publicClient.multicall({
+      contracts: DIRECT_TOKENS.map((t) => ({
+        address: executorV4 as `0x${string}`,
+        abi: executorV4Abi,
+        functionName: "directTokenAllowed",
+        args: [t.address as `0x${string}`],
+      })),
+    });
+    return DIRECT_TOKENS.filter((_, i) => results[i].status === "success" && (results[i].result as unknown) === true);
+  } catch (e) {
+    console.error("directTokenAllowed read failed:", (e as Error).message);
+    return null;
+  }
+}
 
 /// Can this executor trigger an early send for `id`, and how many are left?
 export async function triggerability(id: bigint) {

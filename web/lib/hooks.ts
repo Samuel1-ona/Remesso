@@ -290,9 +290,10 @@ export function useUsdtBalance(token: `0x${string}` = USDT.address) {
 
 /// Every asset the sender can fund a schedule with, in one read.
 ///
-/// The three are all dollar stablecoins, so the total is their sum at 1:1 —
-/// close enough for a balance line, and honest as long as it is labelled
-/// "USD" rather than pretending to quote a market. `totalUsd6` is at 6dp so
+/// The dollar stablecoins are summed at 1:1 — close enough for a balance
+/// line, and honest as long as it is labelled "USD" rather than pretending to
+/// quote a market. wFIAT is left out of the total: a peso is not a dollar,
+/// and converting would mean quoting a rate here. `totalUsd6` is at 6dp so
 /// cUSD's 18dp does not have to be carried through the display path.
 export function useBalances() {
   const { address } = useAccount();
@@ -310,7 +311,7 @@ export function useBalances() {
     const r = reads.data?.[i];
     return { token, balance: r?.status === "success" ? (r.result as bigint) : undefined };
   });
-  const loaded = balances.filter((b) => b.balance !== undefined);
+  const loaded = balances.filter((b) => b.balance !== undefined && b.token.currency === "USD");
   const totalUsd6 = loaded.length
     ? loaded.reduce(
         (acc, b) => acc + (b.balance! * 1_000_000n) / 10n ** BigInt(b.token.decimals),
@@ -319,6 +320,31 @@ export function useBalances() {
     : undefined;
 
   return { balances, totalUsd6, isPending: reads.isPending };
+}
+
+/// The Direct assets the contract will accept for a NEW schedule, read from
+/// its allowlist. The owner widens it with `setDirectToken`; offering a token
+/// before then would let a sender fill in the whole form and meet
+/// TokenNotAllowed at signing. While loading, or if the read fails, the
+/// dollar stablecoins — allowed since deploy, so the fallback can hide a
+/// token but never offer one the contract refuses.
+export function useAllowedDirectTokens(): TokenInfo[] {
+  const reads = useReadContracts({
+    contracts: DIRECT_TOKENS.map((t) => ({
+      address: EXECUTOR_ADDRESS,
+      abi: executorAbi,
+      functionName: "directTokenAllowed" as const,
+      args: [t.address],
+    })),
+    query: { enabled: isConfigured(), staleTime: 5 * 60_000 },
+  });
+  return useMemo(() => {
+    if (!reads.data) return DIRECT_TOKENS.filter((t) => t.currency === "USD");
+    return DIRECT_TOKENS.filter((_, i) => {
+      const r = reads.data[i];
+      return r?.status === "success" && r.result === true;
+    });
+  }, [reads.data]);
 }
 
 /// A live USDT -> cNGN rate from the one pool that exists on Celo.

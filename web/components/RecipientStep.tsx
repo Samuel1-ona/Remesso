@@ -6,6 +6,7 @@ import { isAddress } from "viem";
 import { fetchBanks, verifyAccount, type AccountDetails } from "@/lib/api";
 import { BANK_PAYOUTS_ENABLED, CNGN_RAILS_ENABLED, DIRECT_TOKENS, type TokenInfo } from "@/lib/config";
 import { isMiniPay } from "@/lib/wagmi";
+import { useAllowedDirectTokens } from "@/lib/hooks";
 import type { PayoutKind } from "@/lib/types";
 
 export type RecipientDraft = {
@@ -44,6 +45,7 @@ export function RecipientStep({
   value: RecipientDraft;
   onChange: (r: RecipientDraft) => void;
 }) {
+  const allowed = useAllowedDirectTokens();
   const set = (patch: Partial<RecipientDraft>) => onChange({ ...value, ...patch });
   const addressInvalid = Boolean(value.walletAddress) && !isAddress(value.walletAddress);
 
@@ -98,7 +100,7 @@ export function RecipientStep({
           <div className={CNGN_RAILS_ENABLED ? "mt-4" : ""}>
             <p className="label">What should they receive?</p>
             <div className="grid grid-cols-3 gap-2">
-              {DIRECT_TOKENS.map((t) => (
+              {allowed.map((t) => (
                 <button
                   key={t.symbol}
                   type="button"
@@ -112,10 +114,20 @@ export function RecipientStep({
                 </button>
               ))}
             </div>
-            <p className="hint">
-              You send {value.token.symbol}, they receive {value.token.symbol}. No conversion,
-              and it appears in their MiniPay balance straight away.
-            </p>
+            {value.token.miniPayVisible ? (
+              <p className="hint">
+                You send {value.token.symbol}, they receive {value.token.symbol}. No conversion,
+                and it appears in their MiniPay balance straight away.
+              </p>
+            ) : (
+              // Same honesty as the cNGN warning below: MiniPay shows none of
+              // the wFIAT, and has no way to add a token.
+              <p className="notice-warn mt-3">
+                You send {value.token.symbol}, they receive {value.token.symbol}, with no
+                conversion. MiniPay does not show {value.token.symbol}, so they need a wallet
+                that does.
+              </p>
+            )}
           </div>
         )}
 
