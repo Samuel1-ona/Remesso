@@ -157,6 +157,27 @@ all six V4 schedules are `Direct`/USDT, so nothing is currently refused.
 **Decimals are not uniform.** USDT and USDC are 6dp, cUSD is 18dp, cNGN is 6dp —
 all verified on-chain. `lib/config.ts` holds the map; never hardcode 6.
 
+## Ripio wFIAT on the Direct rail — live 2026-10-06
+
+wARS, wBRL and wCOP (Ripio, 18dp, upgradeable proxies) were allowed on V4 with
+`setDirectToken` from the cold owner on 2026-10-06 — no redeploy, since the
+Direct allowlist is the owner's one lever that adds a corridor. They are the
+three wFIAT Celo's x402 facilitator lists. Sender funds in pesos or reais, the
+recipient receives the same token; nothing converts.
+
+**A peso is not a dollar**, and these used to assume it was:
+- the backend per-run cap (`LIMITS.maxRunAmountUsdt`) is scaled per token by
+  `unitsPerUsd` in `_shared/config.ts` — rough rates rounded DOWN, so staleness
+  and peso depreciation only make the cap stricter. An asset missing from that
+  table is refused, never assumed 6dp;
+- the home balance total and the unusual-schedule check count `currency: "USD"`
+  tokens only.
+
+What a NEW schedule may use is read from the contract (`directTokenAllowed`),
+not from our token lists: the form's picker and `/agent` both do this, so
+nothing is offered before the contract takes it. MiniPay shows none of the
+wFIAT; the form warns the recipient needs another wallet.
+
 ## Self identity verification — optional, gates nothing
 
 A sender can verify with Self (self.xyz) from the home screen: a Pre-KYC flow
@@ -236,7 +257,12 @@ told a sender to wait for a retry instead of allowing payments again.
 
 ## Attribution (ERC-8021)
 
-Every transaction Remesso causes carries the `remesso` tag: the executor's runs
+Every transaction Remesso causes carries the `remesso` tag — and, for the
+Agents on Open Rails hackathon (deadline 2026-11-09), the code Loops issued,
+`celo_5cd35ca55baf`. `ATTRIBUTION_CODE` / `NEXT_PUBLIC_ATTRIBUTION_CODE` are
+comma-separated; both codes ride in one Schema 0 suffix. The Vercel variable
+must carry both too — verified in the live bundle 2026-10-06. Drop the event
+code after judging by editing the env, nothing else: the executor's runs
 (`_shared/attribution.ts`, spread into `simulateContract`) and every wallet
 write a sender signs (`web/lib/tx.ts` → `txOverrides()`, which already rode on
 all of them). The suffix sits after the calldata and the EVM discards it, so
@@ -329,7 +355,8 @@ Registered with Self Agent ID on 2026-09-22, from a real passport:
 | agent address | `0x5C3EBb0084233156ba51a5C2dfD42d88d5a74CA6` |
 | human owner | `0xcDEA4Cc4191Ec9A5d8fD1a6B17e3F4C84E993Ae2` (cold) |
 | registry | `0xaC3DF9ABf80d0F5c020C06B04Cced27763355944` — soulbound, `ownerOf(191)` confirms |
-| ERC-8004 | agent `9867`, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, registered 2026-09-28, metadata refreshed 2026-10-01 (`0x86e49771…dc77`) |
+| ERC-8004 | agent `9867`, registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, registered 2026-09-28, metadata refreshed 2026-10-01 (`0x86e49771…dc77`) — owned by the cold owner |
+| ERC-8004 (agent wallet) | agent `9879`, same registry and metadata as 9867, registered 2026-10-06 FROM the executor (`0x3c754AD3…49Cd1`, tx `0xc806f21d…bad5`) — the hackathon wants the identity held by the wallet that sends the agent's transactions |
 
 The ERC-8004 metadata is a `data:` URI embedded in the token, not a link to a
 host we control: what is registered cannot be quietly rewritten later. Changing

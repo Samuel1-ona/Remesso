@@ -27,11 +27,13 @@
 /// default:
 ///   TO=0x…            who gets paid                        (required)
 ///   AMOUNT=0.05       per transfer, in whole tokens        (required)
-///   TOKEN=USDT        USDT | USDC | cUSD                   (default USDT)
+///   TOKEN=USDT        USDT | USDC | cUSD | wARS | wBRL | wCOP  (default USDT)
 ///   EVERY=week        week | fortnight | month | quarter   (default week)
 ///   RUNS=2            how many transfers                   (default 2)
 ///   TRIGGER=remesso   allow early sending                  (default: none)
-///   MAX_TOTAL=1       refuse if AMOUNT × RUNS exceeds this (default 1)
+///   MAX_TOTAL=1       refuse if AMOUNT × RUNS exceeds this (default 1),
+///                     in TOKEN's own units — 1 wARS is one peso, so a
+///                     peso schedule needs this raised deliberately
 import { createPublicClient, createWalletClient, http, parseAbi, parseEventLogs, parseUnits } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import { celo } from "npm:viem@2/chains";
@@ -48,6 +50,11 @@ const TOKENS: Record<string, { address: `0x${string}`; decimals: number }> = {
   USDT: { address: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e", decimals: 6 },
   USDC: { address: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", decimals: 6 },
   CUSD: { address: "0x765DE816845861e75A25fCA122bb6898B8B1282a", decimals: 18 },
+  // Ripio's local-currency stablecoins, allowed on V4 2026-10-06. 18dp, and
+  // not dollars: amounts are pesos and reais.
+  WARS: { address: "0x0DC4F92879B7670e5f4e4e6e3c801D229129D90D", decimals: 18 },
+  WBRL: { address: "0xD76f5Faf6888e24D9F04Bf92a0c8B921FE4390e0", decimals: 18 },
+  WCOP: { address: "0x8a1D45e102e886510e891d2Ec656a708991e2D76", decimals: 18 },
 };
 
 const CADENCE: Record<string, number> = {
