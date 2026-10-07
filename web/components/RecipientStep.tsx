@@ -7,6 +7,8 @@ import { fetchBanks, verifyAccount, type AccountDetails } from "@/lib/api";
 import { BANK_PAYOUTS_ENABLED, CNGN_RAILS_ENABLED, DIRECT_TOKENS, type TokenInfo } from "@/lib/config";
 import { isMiniPay } from "@/lib/wagmi";
 import { useAllowedDirectTokens } from "@/lib/hooks";
+import { ripioRampUrl } from "@/lib/ripio";
+import { useAccount } from "wagmi";
 import type { PayoutKind } from "@/lib/types";
 
 export type RecipientDraft = {
@@ -46,6 +48,7 @@ export function RecipientStep({
   onChange: (r: RecipientDraft) => void;
 }) {
   const allowed = useAllowedDirectTokens();
+  const { address: sender } = useAccount();
   const set = (patch: Partial<RecipientDraft>) => onChange({ ...value, ...patch });
   const addressInvalid = Boolean(value.walletAddress) && !isAddress(value.walletAddress);
 
@@ -122,11 +125,14 @@ export function RecipientStep({
             ) : (
               // Same honesty as the cNGN warning below: MiniPay shows none of
               // the wFIAT, and has no way to add a token.
-              <p className="notice-warn mt-3">
-                You send {value.token.symbol}, they receive {value.token.symbol}, with no
-                conversion. MiniPay does not show {value.token.symbol}, so they need a wallet
-                that does.
-              </p>
+              <>
+                <p className="notice-warn mt-3">
+                  You send {value.token.symbol}, they receive {value.token.symbol}, with no
+                  conversion. MiniPay does not show {value.token.symbol}, so they need a wallet
+                  that does.
+                </p>
+                <RipioLinks token={value.token} sender={sender} />
+              </>
             )}
           </div>
         )}
@@ -338,5 +344,26 @@ function Choice({
         {subtitle}
       </span>
     </button>
+  );
+}
+
+/// Where the pesos come from and where they go: Ripio's hosted ramp, in and
+/// out of a local bank account. Absent for any token Ripio does not ramp.
+function RipioLinks({ token, sender }: { token: TokenInfo; sender?: string }) {
+  const buy = ripioRampUrl("on", token, { address: sender });
+  const cashOut = ripioRampUrl("off", token);
+  if (!buy || !cashOut) return null;
+  return (
+    <p className="hint">
+      No {token.symbol} yet?{" "}
+      <a href={buy} target="_blank" rel="noopener noreferrer" className="underline">
+        Buy it with Ripio
+      </a>{" "}
+      from a local bank account. They can{" "}
+      <a href={cashOut} target="_blank" rel="noopener noreferrer" className="underline">
+        cash out at Ripio
+      </a>{" "}
+      the same way.
+    </p>
   );
 }

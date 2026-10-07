@@ -1,3 +1,4 @@
+import { ATTRIBUTION_CODES } from "./attribution.ts";
 /// x402: charging for a call, over plain HTTP.
 ///
 /// The protocol is three moves. A caller asks for something; we answer 402
@@ -184,6 +185,7 @@ export function paymentRequired(
   resource: ResourceInfo,
   error = "payment required",
 ): { body: unknown; headers: Record<string, string> } {
+  const extensions = builderCodeExtension();
   return {
     // v1 shape, because the body is where a v1 client looks.
     body: {
@@ -192,10 +194,63 @@ export function paymentRequired(
       accepts: accepts.map((a) => asV1(a, resource)),
     },
     headers: {
-      "PAYMENT-REQUIRED": btoa(JSON.stringify({ x402Version: 2, error, resource, accepts })),
+      "PAYMENT-REQUIRED": btoa(JSON.stringify({
+        x402Version: 2,
+        error,
+        resource,
+        accepts,
+        ...(extensions ? { extensions } : {}),
+      })),
     },
   };
 }
+
+/// The ERC-8021 builder-code declaration for our 402s, the shape
+/// `declareBuilderCodeExtension` from `@x402/extensions` writes.
+///
+/// The facilitator submits the settlement, so our own suffix can never ride on
+/// it — only the facilitator can append one. The standard route is this
+/// extension: we declare our code, the client echoes it in its payment, and
+/// the facilitator writes a Schema 2 tag with our code as `a` and its own as
+/// `w`. Celo DevRel, 2026-10-07: the Celo facilitator does not write it yet
+/// (x402-rs/x402-rs#99, deploying on merge), it applies to v2 payments only —
+/// v1 has no extensions field — and to USDC, USD₮ and USA₮ first. Declaring it
+/// now costs nothing and means settlements tag themselves the day it ships.
+///
+/// `a` holds exactly one code, so the first of `ATTRIBUTION_CODES` (ours) goes
+/// there and any others (the hackathon's) go in `s`; Celo's decoder lists every
+/// code in the map, so each is credited. `undefined` if nothing is usable — a
+/// 402 without the extension is still a valid 402.
+export function builderCodeExtension(codes: readonly string[] = ATTRIBUTION_CODES) {
+  const valid = codes.filter((c) => /^[a-z0-9_]{1,32}$/.test(c));
+  const [a, ...rest] = valid;
+  if (!a) return undefined;
+  const s = rest.slice(0, 5);
+  return {
+    "builder-code": {
+      info: s.length ? { a, s } : { a },
+      schema: BUILDER_CODE_SCHEMA,
+    },
+  };
+}
+
+/// Verbatim from `@x402/extensions` 2.28.0, so a strict client validating the
+/// declaration against its own copy finds the same document.
+const BUILDER_CODE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  properties: {
+    a: { type: "string", pattern: "^[a-z0-9_]{1,32}$", description: "App builder code" },
+    w: { type: "string", pattern: "^[a-z0-9_]{1,32}$", description: "Wallet builder code" },
+    s: {
+      type: "array",
+      maxItems: 11,
+      items: { type: "string", pattern: "^[a-z0-9_]{1,32}$" },
+      description: "Service builder codes",
+    },
+  },
+  additionalProperties: false,
+};
 
 /// The same price list in v1's shape, for a client that only speaks v1.
 ///

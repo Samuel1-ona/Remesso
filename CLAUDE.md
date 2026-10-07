@@ -22,6 +22,9 @@ deno test --allow-env supabase/functions/_shared/failures.test.ts
 deno test --allow-env --allow-read --allow-write --allow-run --allow-net --allow-sys \
   supabase/functions/_shared/cngn.test.ts
 
+# x402 builder-code — pins our 402 declaration to @x402/extensions' own output
+deno test --allow-env --allow-read --allow-net supabase/functions/_shared/x402.test.ts
+
 # history merge — how the chain is allowed ahead of the `runs` table in the UI
 deno test --unstable-sloppy-imports web/lib/history.test.ts
 
@@ -173,6 +176,12 @@ recipient receives the same token; nothing converts.
 - the home balance total and the unusual-schedule check count `currency: "USD"`
   tokens only.
 
+**Getting pesos in and out is Ripio's hosted ramp**, not an integration:
+`web/lib/ripio.ts` builds `ramp.ripio.com` links (country, chain 42220, token,
+optional amount and address) and the send form shows "buy" and "cash out" for
+any wFIAT. No credentials — Ripio's B2B API needs a company KYB. Their note
+says `/offramp`; that 308s to `/off-ramp`, which is what we link.
+
 What a NEW schedule may use is read from the contract (`directTokenAllowed`),
 not from our token lists: the form's picker and `/agent` both do this, so
 nothing is offered before the contract takes it. MiniPay shows none of the
@@ -319,6 +328,17 @@ seller learns the currency — but it is the PAYER's copy. `match()` uses it onl
 to select which of OUR advertised entries to verify against; a payload claiming
 `amount: "1"` selects nothing or selects an entry whose real price we then use.
 The echo selects, it never instructs.
+
+**Our tag cannot ride on an x402 settlement we did not submit.** The
+facilitator sends `transferWithAuthorization`, so only it can append ERC-8021.
+The route is the `builder-code` extension: our v2 402 declares
+`extensions["builder-code"].info` (`a: remesso`, `s: [celo_5cd35ca55baf]`),
+the client echoes it, and the facilitator writes a Schema 2 tag. Celo DevRel,
+2026-10-07: their facilitator does not write it yet (x402-rs/x402-rs#99), it is
+v2-only, and USDC/USD₮/USA₮ first. Until then settlements are untagged and the
+hackathon credits x402 volume **by `payTo`** — `X402_PAY_TO`, the cold owner
+`0xcDEA…3Ae2`, not the executor. `x402-pay.ts` (us paying) speaks v1, which has
+no extensions, so our purchases cannot carry `s` until it moves to v2.
 
 **Two currencies, one price.** `_shared/x402.ts` holds `ASSETS` — USDC and
 USA₮ — and a 402 offers both; the same `maxAmountRequired` is correct for each
